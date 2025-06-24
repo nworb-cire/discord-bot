@@ -1,0 +1,32 @@
+[project]
+name = "book_club_bot"
+version = "0.1.0"
+description = "Discord bot for book nominations, elections, voting, and predictions."
+authors = [{ name = "Book Club Team" }]
+requires-python = ">=3.11"
+
+dependencies = [
+    "discord-py==2.*",
+    "SQLAlchemy[asyncio]==2.*",
+    "asyncpg>=0.29",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "loguru>=0.7",
+    "apscheduler>=3.10",
+    "aiohttp>=3.9",
+    "beautifulsoup4>=4.12",
+    "httpx>=0.27",
+    "openai>=1.25",
+    "aioredis>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "coverage>=7.5",
+    "black>=24.4",
+    "flake8>=7.0",
+    "alembic>=1.13",
+]

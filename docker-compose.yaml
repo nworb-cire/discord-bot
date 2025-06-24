@@ -1,0 +1,31 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./src:/app/src
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bookclub
+      POSTGRES_PASSWORD: bookclub
+      POSTGRES_DB: bookclub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookclub"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:

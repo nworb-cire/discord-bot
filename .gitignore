@@ -1,0 +1,46 @@
+# Environment and IDE
+.env
+.venv/
+.idea/
+.vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test output
+htmlcov/
+.coverage
+.tox/
+.pytest_cache/
+
+# Logs and dumps
+*.log
+*.pot
+*.mo
+*.dump
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Misc
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# Poetry
+poetry.lock
