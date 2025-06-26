@@ -22,7 +22,7 @@ async def scrape_amazon_product(asin: str) -> dict:
 
     title = soup.select_one("#productTitle")
     author = soup.select_one(".author a")
-    paperback = soup.select_one("span.a-size-base.a-color-price.a-text-bold")
+    # paperback = soup.select_one("span.a-size-base.a-color-price.a-text-bold")
     kindle = soup.select_one("a[href*='kindle'] .a-color-price")
     audible = soup.select_one("a[href*='audible'] .a-color-price")
 
@@ -34,7 +34,7 @@ async def scrape_amazon_product(asin: str) -> dict:
     return {
         "title": title.text.strip() if title else "Unknown",
         "author": author.text.strip() if author else "Unknown",
-        "price_paperback": price_to_float(paperback),
+        "price_paperback": -1.0,
         "price_kindle": price_to_float(kindle),
         "price_audible": price_to_float(audible),
     }

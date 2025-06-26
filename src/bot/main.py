@@ -12,16 +12,17 @@ tree = discord.app_commands.CommandTree(bot)
 
 
 async def setup_commands():
-    tree.add_command(Nominate._nominate)
-    tree.add_command(OpenVoting._open)
+    tree.add_command(Nominate())
+    # tree.add_command(OpenVoting._open)
     # add other command registrations here
 
 
 @bot.event
 async def on_ready():
     await setup_commands()
-    await tree.sync()
-    logger.info("Bot ready as {}", bot.user)
+    synced = await tree.sync(guild=discord.Object(id=1378386449023504455))
+    logger.info(f"Synced {len(synced)} commands to Discord.")
+    logger.info(f"Bot ready as {bot.user}.")
     election_auto_close.start()
     prediction_reminder.start()
 

@@ -1,7 +1,7 @@
 import discord
-from discord import app_commands
+from discord.app_commands import Command
 from loguru import logger
-from sqlalchemy import select, insert
+from sqlalchemy import select
 from bot.db import async_session, Book, Nomination
 from bot.scraper import extract_asin, scrape_amazon_product
 from bot.openai_summarize import summarize
@@ -11,9 +11,15 @@ from bot.config import get_settings
 settings = get_settings()
 
 
-class Nominate(app_commands.CommandTree):
-    @app_commands.command(name="nominate", description="Nominate a book (Amazon link)")
-    async def _nominate(self, interaction: discord.Interaction, link: str):
+class Nominate(Command):
+    def __init__(self):
+        super().__init__(
+            name="nominate",
+            description="Nominate a book (Amazon link)",
+            callback=self.nominate,
+        )
+
+    async def nominate(self, interaction: discord.Interaction, link: str):
         asin = extract_asin(link)
         if not asin:
             await interaction.response.send_message("Invalid Amazon link.", ephemeral=True)
@@ -25,7 +31,8 @@ class Nominate(app_commands.CommandTree):
 
             if not book:
                 meta = await scrape_amazon_product(asin)
-                short, long = await summarize(meta["title"])
+                # short, long = await summarize(meta["title"])
+                short, long = "", ""
 
                 book = Book(
                     asin=asin,
