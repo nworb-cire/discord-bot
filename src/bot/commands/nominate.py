@@ -35,7 +35,12 @@ class Nominate(commands.Cog):
             book = (await session.execute(book_stmt)).scalar_one_or_none()
 
             if not book:
-                meta = await self.open_library_search(isbn)
+                try:
+                    meta = await self.open_library_search(isbn)
+                except httpx.HTTPStatusError as e:
+                    logger.error("Failed to fetch book metadata: {}", e)
+                    await interaction.followup.send("Failed to fetch book metadata from OpenLibrary.org.", ephemeral=True)
+                    return
                 if not meta:
                     await interaction.followup.send("Failed to find book in OpenLibrary.org.", ephemeral=True)
                     return
@@ -43,7 +48,7 @@ class Nominate(commands.Cog):
                 title = meta.get("title", "Unknown Title")
                 subtitle = meta.get("subtitle", "")
                 full_title = f"{title}: {subtitle}" if subtitle else title
-                description = meta.get("description", {}).get("value", "")
+                description = str(meta.get("description", ""))  # Sometimes this comes through as a nested dict
                 summary = await self.openai_summarize(full_title, description)
                 book = Book(
                     title=full_title,
