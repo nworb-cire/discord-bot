@@ -11,4 +11,5 @@ RUN pip install uv &&  \
 COPY src /app/src
 ENV PYTHONPATH=/app/src
 
-CMD ["uv", "run", "python3", "src/bot/main.py"]
+ENTRYPOINT ["uv", "run", "--", "sh", "-c", "exec \"$@\"", "dummy"]
+CMD ["python3", "src/bot/main.py"]

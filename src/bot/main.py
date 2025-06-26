@@ -7,9 +7,7 @@ from bot.commands.open_voting import OpenVoting
 # (other command classes would be imported similarly)
 
 settings = get_settings()
-intents = discord.Intents.default()
-intents.message_content = True
-bot = discord.Client(intents=intents)
+bot = discord.Client(intents=discord.Intents.default())
 tree = discord.app_commands.CommandTree(bot)
 
 
