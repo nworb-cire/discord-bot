@@ -1,0 +1,112 @@
+import discord
+from discord import app_commands, Permissions
+from discord.ext import commands
+from sqlalchemy import select, func, literal_column, true
+from sqlalchemy.sql import lateral
+from bot.db import async_session, Nomination, Election, Vote, Book
+from bot.utils import utcnow
+from datetime import timedelta, datetime
+from bot.config import get_settings
+
+settings = get_settings()
+
+
+class VotingSession(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(
+        name="open_voting",
+        description="Open an election for book club",
+    )
+    @app_commands.default_permissions(Permissions(manage_roles=True))
+    async def open_voting(self, interaction: discord.Interaction, hours: int = 72):
+        now = utcnow()
+        async with async_session() as session:
+            existing = (await session.execute(select(Election).where(Election.closed_at.is_(None)))).scalar_one_or_none()
+            if existing:
+                await interaction.response.send_message("An election is already open.", ephemeral=True)
+                return
+
+            sub_votes = (
+                select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
+                .group_by(Vote.book_id)
+                .subquery()
+            )
+
+            elem_col = func.json_array_elements_text(
+                Nomination.reacted_users
+            ).label("elem")
+            elem_sel = select(elem_col)
+            unnest_lateral = lateral(elem_sel).alias("n_un")
+            nominations = (
+                select(Nomination.book_id, func.count(func.distinct(unnest_lateral.c.elem)).label("reacts"))
+                .select_from(Nomination)
+                .join(unnest_lateral, true())  # cross join
+                .group_by(Nomination.book_id)
+                .subquery()
+            )
+
+            scored = (
+                select(
+                    Book.id,
+                    (func.coalesce(nominations.c.reacts, 0) + func.coalesce(sub_votes.c.vote_sum, 0)).label("score"),
+                )
+                .join(nominations, nominations.c.book_id == Book.id, isouter=True)
+                .join(sub_votes, sub_votes.c.book_id == Book.id, isouter=True)
+                .order_by(literal_column("score").desc(), Book.created_at)
+                .limit(settings.ballot_size)
+            )
+            ballot_ids = [row.id for row in (await session.execute(scored)).all()]
+
+            closes_at = now + timedelta(hours=hours)
+            election = Election(
+                opener_discord_id=interaction.user.id,
+                opened_at=now,
+                closes_at=closes_at,
+                ballot=ballot_ids,
+                message_id=0,
+            )
+            session.add(election)
+            await session.commit()
+
+        closes_at = int(closes_at.timestamp())
+        embed = discord.Embed(
+            title="Book Club Election",
+            description=f"Vote with `/vote`! "
+                        f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
+        )
+        for idx, bid in enumerate(ballot_ids, 1):
+            book = await session.get(Book, bid)
+            summary = book.summary or "No summary available."
+            if len(summary) > 1024:
+                summary = summary[:1021] + "..."
+            embed.add_field(name=f"{idx}. {book.title}", value=summary, inline=False)
+        msg = await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
+        async with async_session() as session:
+            await session.execute(
+                select(Election).where(Election.id == election.id).execution_options(synchronize_session="fetch")
+            )
+            election.message_id = msg.id
+            await session.commit()
+        await interaction.response.send_message("Election opened.", ephemeral=True)
+
+    @app_commands.command(
+        name="close_voting",
+        description="Close the current election and announce results",
+    )
+    @app_commands.default_permissions(Permissions(manage_roles=True))
+    async def close_voting(self, interaction: discord.Interaction):
+        async with async_session() as session:
+            election = (await session.execute(select(Election).where(Election.closed_at.is_(None)))).scalar_one_or_none()
+            if not election:
+                await interaction.response.send_message("No open election found.", ephemeral=True)
+                return
+
+            election.closed_at = utcnow()
+            await session.commit()
+
+        embed = discord.Embed(title="Election Results", description="Voting has ended.")
+        embed.add_field(name="Winner", value=f"Book ID: {election.ballot[0]}", inline=False)
+        await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
+        await interaction.response.send_message("Election closed and results announced.", ephemeral=True)

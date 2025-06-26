@@ -3,7 +3,7 @@ from discord.ext import tasks, commands
 from loguru import logger
 from bot.config import get_settings
 from bot.commands.nominate import Nominate
-from bot.commands.open_voting import OpenVoting
+from bot.commands.voting_session import VotingSession
 
 settings = get_settings()
 bot = commands.Bot(
@@ -15,7 +15,7 @@ bot = commands.Bot(
 
 async def setup_commands():
     await bot.add_cog(Nominate(bot))
-    # await bot.add_cog(OpenVoting(bot))
+    await bot.add_cog(VotingSession(bot))
 
 
 @bot.event
