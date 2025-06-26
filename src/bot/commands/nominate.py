@@ -43,9 +43,12 @@ class Nominate(commands.Cog):
                 title = meta.get("title", "Unknown Title")
                 subtitle = meta.get("subtitle", "")
                 full_title = f"{title}: {subtitle}" if subtitle else title
+                description = meta.get("description", {}).get("value", "")
+                summary = await self.openai_summarize(full_title, description)
                 book = Book(
                     title=full_title,
-                    description=meta.get("description", {}).get("value", ""),
+                    description=description,
+                    summary=summary,
                     isbn=isbn,
                     length=meta.get("number_of_pages", None),
                 )
@@ -64,11 +67,10 @@ class Nominate(commands.Cog):
             session.add(nomination)
             await session.commit()
 
-        summary_short = await self.openai_summarize(book.title, book.description or "")
-        if summary_short:
-            summary_short += "\n\nNote: AI generated summaries may be inaccurate."
-        summary_short += f"\n\nNominated by {interaction.user.mention}."
-        embed = discord.Embed(title=book.title, description=summary_short)
+        if summary:
+            summary += "\n\nNote: AI generated summaries may be inaccurate."
+        summary += f"\n\nNominated by {interaction.user.mention}."
+        embed = discord.Embed(title=book.title, description=summary)
         await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
         await interaction.followup.send(f"Nominated {full_title}")
 

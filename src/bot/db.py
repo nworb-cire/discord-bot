@@ -23,6 +23,7 @@ class Book(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=True)
     isbn: Mapped[str] = mapped_column(String(13), unique=True, nullable=True)
     length: Mapped[int] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
