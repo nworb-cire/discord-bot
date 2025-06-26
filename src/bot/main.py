@@ -4,7 +4,6 @@ from loguru import logger
 from bot.config import get_settings
 from bot.commands.nominate import Nominate
 from bot.commands.open_voting import OpenVoting
-# (other command classes would be imported similarly)
 
 settings = get_settings()
 bot = discord.Client(intents=discord.Intents.default())
@@ -13,14 +12,13 @@ tree = discord.app_commands.CommandTree(bot)
 
 async def setup_commands():
     tree.add_command(Nominate())
-    # tree.add_command(OpenVoting._open)
-    # add other command registrations here
+    tree.add_command(OpenVoting())
 
 
 @bot.event
 async def on_ready():
     await setup_commands()
-    synced = await tree.sync(guild=discord.Object(id=1378386449023504455))
+    synced = await tree.sync()
     logger.info(f"Synced {len(synced)} commands to Discord.")
     logger.info(f"Bot ready as {bot.user}.")
     election_auto_close.start()

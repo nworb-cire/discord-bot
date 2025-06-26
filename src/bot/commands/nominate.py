@@ -20,7 +20,7 @@ class Nominate(Command):
     def __init__(self):
         super().__init__(
             name="nominate",
-            description="Nominate a book (Amazon link)",
+            description="Nominate a book (ISBN)",
             callback=self.nominate,
         )
         self.openai_client = openai.AsyncOpenAI(api_key=settings.openai_key)

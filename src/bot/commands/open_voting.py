@@ -1,5 +1,6 @@
 import discord
 from discord import app_commands
+from discord.app_commands import Command
 from sqlalchemy import select, func
 from loguru import logger
 from bot.db import async_session, Nomination, Election, Vote, Book
@@ -9,10 +10,15 @@ from bot.config import get_settings
 settings = get_settings()
 
 
-class OpenVoting(app_commands.CommandTree):
-    @app_commands.command(name="open_voting", description="Open an election")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def _open(self, interaction: discord.Interaction, hours: int = 72):
+class OpenVoting(Command):
+    def __init__(self):
+        super().__init__(
+            name="open_voting",
+            description="Open an election for book club",
+            callback=self.open_voting,
+        )
+
+    async def open_voting(self, interaction: discord.Interaction, hours: int = 72):
         now = utcnow()
         async with async_session() as session:
             existing = (await session.execute(select(Election).where(Election.closed_at.is_(None)))).scalar_one_or_none()
