@@ -4,7 +4,8 @@ from typing import Any
 import discord
 import httpx
 import openai
-from discord.app_commands import Command
+from discord import app_commands
+from discord.ext import commands
 from loguru import logger
 from sqlalchemy import select
 
@@ -16,26 +17,27 @@ settings = get_settings()
 ASIN_RE = re.compile(r"/([A-Z0-9]{10})(?:[/?]|$)")
 
 
-class Nominate(Command):
-    def __init__(self):
-        super().__init__(
-            name="nominate",
-            description="Nominate a book (ISBN)",
-            callback=self.nominate,
-        )
+class Nominate(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
         self.openai_client = openai.AsyncOpenAI(api_key=settings.openai_key)
 
+    @app_commands.command(
+        name="nominate",
+        description="Nominate a book by its ISBN",
+    )
     async def nominate(self, interaction: discord.Interaction, isbn: str):
-        isbn = isbn.strip()
+        await interaction.response.defer(ephemeral=False)
+        isbn = re.sub(r"[^\dX]", "", isbn)
 
         async with async_session() as session:
-            book_stmt = select(Book).where(Book.isbn10 == isbn)
+            book_stmt = select(Book).where(Book.isbn == isbn)
             book = (await session.execute(book_stmt)).scalar_one_or_none()
 
             if not book:
                 meta = await self.open_library_search(isbn)
                 if not meta:
-                    await interaction.response.send_message("Failed to find book in OpenLibrary.org.", ephemeral=True)
+                    await interaction.followup.send("Failed to find book in OpenLibrary.org.", ephemeral=True)
                     return
 
                 title = meta.get("title", "Unknown Title")
@@ -44,12 +46,12 @@ class Nominate(Command):
                 book = Book(
                     title=full_title,
                     description=meta.get("description", {}).get("value", ""),
-                    isbn10=isbn,
+                    isbn=isbn,
                     length=meta.get("number_of_pages", None),
                 )
                 session.add(book)
                 await session.commit()
-                logger.info("Inserted new book {}", book.isbn10)
+                logger.info("Inserted new book {}", book.isbn)
 
             # TODO: Add new nomination only if it needs to be re-nominated, else return a message to the user
             nomination = Nomination(
@@ -63,13 +65,16 @@ class Nominate(Command):
             await session.commit()
 
         summary_short = await self.openai_summarize(book.title, book.description or "")
+        if summary_short:
+            summary_short += "\n\nNote: AI generated summaries may be inaccurate."
+        summary_short += f"\n\nNominated by {interaction.user.mention}."
         embed = discord.Embed(title=book.title, description=summary_short)
         await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
-        await interaction.response.send_message("Nomination posted!", ephemeral=True)
+        await interaction.followup.send(f"Nominated {full_title}")
 
     async def open_library_search(self, isbn: str) -> dict[str, Any]:
-        with httpx.AsyncClient() as client:
-            r = await client.get(f"https://openlibrary.org/books/{isbn}.json")
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"https://openlibrary.org/isbn/{isbn}.json", follow_redirects=True)
             r.raise_for_status()
         return r.json()
 
@@ -81,4 +86,4 @@ class Nominate(Command):
                          "You are to provide a three-sentence summary of the book..",
             input=f"Book title: {title}\nDescription: {description}",
         )
-        return response.choices[0].message.content.strip() if response.choices else "No summary available."
+        return response.output[0].content[0].text.strip() if response.output else "No summary available."

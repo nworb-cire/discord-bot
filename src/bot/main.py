@@ -1,31 +1,34 @@
 import discord
-from discord.ext import tasks
+from discord.ext import tasks, commands
 from loguru import logger
 from bot.config import get_settings
 from bot.commands.nominate import Nominate
 from bot.commands.open_voting import OpenVoting
 
 settings = get_settings()
-bot = discord.Client(intents=discord.Intents.default())
-tree = discord.app_commands.CommandTree(bot)
+bot = commands.Bot(
+    command_prefix="",
+    intents=discord.Intents.default(),
+    help_command=None,
+)
 
 
 async def setup_commands():
-    tree.add_command(Nominate())
-    tree.add_command(OpenVoting())
+    await bot.add_cog(Nominate(bot))
+    # await bot.add_cog(OpenVoting(bot))
 
 
 @bot.event
 async def on_ready():
     await setup_commands()
-    synced = await tree.sync()
+    synced = await bot.tree.sync()
     logger.info(f"Synced {len(synced)} commands to Discord.")
     logger.info(f"Bot ready as {bot.user}.")
     election_auto_close.start()
     prediction_reminder.start()
 
 
-@tasks.loop(seconds=60)
+@tasks.loop(minutes=60)
 async def election_auto_close():
     from bot.background import close_expired_elections
 
