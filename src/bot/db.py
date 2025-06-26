@@ -21,14 +21,10 @@ class Book(Base):
     __tablename__ = "books"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    asin: Mapped[str] = mapped_column(String(12), unique=True)
-    author: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
-    summary_short: Mapped[str] = mapped_column(Text)
-    summary_long: Mapped[str] = mapped_column(Text)
-    price_paperback: Mapped[float] = mapped_column(Numeric(6, 2))
-    price_kindle: Mapped[float] = mapped_column(Numeric(6, 2), nullable=True)
-    price_audible: Mapped[float] = mapped_column(Numeric(6, 2), nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    isbn10: Mapped[str] = mapped_column(String(10), unique=True, nullable=True)
+    length: Mapped[int] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
 
 
