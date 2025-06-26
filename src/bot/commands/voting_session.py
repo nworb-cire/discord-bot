@@ -107,6 +107,16 @@ class VotingSession(commands.Cog):
             await session.commit()
 
         embed = discord.Embed(title="Election Results", description="Voting has ended.")
-        embed.add_field(name="Winner", value=f"Book ID: {election.ballot[0]}", inline=False)
+        book = await session.get(Book, election.ballot[0])
+        embed.add_field(name="Winner", value=book.title, inline=False)
+        for idx, bid in enumerate(election.ballot):
+            book = await session.get(Book, bid)
+            votes = (
+                await session.execute(
+                    select(func.sum(Vote.weight))
+                    .where(Vote.election_id == election.id, Vote.book_id == bid)
+                )
+            ).scalar() or 0
+            embed.add_field(name=f"{idx + 1}. {book.title}", value=f"Votes: {votes}", inline=False)
         await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
         await interaction.response.send_message("Election closed and results announced.", ephemeral=True)
