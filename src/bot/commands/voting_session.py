@@ -88,9 +88,9 @@ class VotingSession(commands.Cog):
             )
             session.add(election)
             await session.commit()
-        await self._election_embed(interaction, election, ballot, closes_at)
+        await self._election_embed(interaction, ballot, closes_at)
 
-    async def _election_embed(self, interaction: discord.Interaction, election: Election, ballot: list[int], closes_at: datetime):
+    async def _election_embed(self, interaction: discord.Interaction, ballot: list[int], closes_at: datetime):
         closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
             title="Book Club Election",
