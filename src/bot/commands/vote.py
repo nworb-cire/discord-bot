@@ -1,12 +1,14 @@
-import re
 import logging
+import re
 
 import discord
 from discord.ext import commands
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.future import select
 
 from bot.config import get_settings
-from bot.db import async_session, Book, Election, Nomination, Vote
+from bot.db import async_session, Book, Election, Vote
+from bot.utils import get_open_election
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -28,8 +30,7 @@ class BallotModal(discord.ui.Modal, title="Vote"):
     async def record_votes(self, user_id, entries, is_bookclub):
         max_score = settings.weight_inner if is_bookclub else settings.weight_outer
         async with async_session() as session:
-            result = await session.execute(select(Election).where(Election.closed_at.is_(None)))
-            election = result.scalar_one_or_none()
+            election = await get_open_election(session)
             if not election:
                 raise Exception("Voting is not currently open.")
             if sum(v**2 for v in entries.values()) > max_score:
@@ -39,14 +40,17 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                     f"i.e., if you cast 3, 3, and 2, the total is 3^2 + 3^2 + 2^2 = 22."
                 )
             for book_id, score in entries.items():
-                vote = Vote(
+                stmt = insert(Vote).values(
                     election_id=election.id,
                     voter_discord_id=user_id,
                     book_id=book_id,
                     weight=score,
+                ).on_conflict_do_update(
+                    index_elements=[Vote.election_id, Vote.voter_discord_id, Vote.book_id],
+                    set_={'weight': score},
                 )
-               # fixme: users cannot change their votes due to uniqueness constraints. maybe use upsert?
-                session.add(vote)
+                await session.execute(stmt)
+
             await session.commit()
 
     async def on_submit(self, inter: discord.Interaction):
