@@ -30,12 +30,17 @@ class Nominate(commands.Cog):
         await interaction.response.defer(ephemeral=False)
         isbn = re.sub(r"[^\dX]", "", isbn)
 
-        summary = full_title = ""  # FIXME: if the book already exists, this crashes
         async with async_session() as session:
             book_stmt = select(Book).where(Book.isbn == isbn)
             book = (await session.execute(book_stmt)).scalar_one_or_none()
 
-            if not book:
+            if book:
+                await interaction.followup.send(
+                    f"Book with ISBN {isbn} has previously been nominated: *{book.title}*",
+                    ephemeral=True,
+                )
+                return
+            else:
                 try:
                     meta = await self.open_library_search(isbn)
                 except httpx.HTTPStatusError as e:
@@ -60,7 +65,7 @@ class Nominate(commands.Cog):
                 )
                 session.add(book)
                 await session.commit()
-                logger.info("Inserted new book {}", book.isbn)
+                logger.info(f"Inserted new book {book.isbn}")
 
             # TODO: Add new nomination only if it needs to be re-nominated, else return a message to the user
             nomination = Nomination(
@@ -78,7 +83,7 @@ class Nominate(commands.Cog):
         summary += f"\n\nNominated by {interaction.user.mention}."
         embed = discord.Embed(title=book.title, description=summary)
         await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
-        await interaction.followup.send(f"Nominated {full_title}")
+        await interaction.followup.send(f"Nominated *{full_title}*")
 
     async def open_library_search(self, isbn: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
