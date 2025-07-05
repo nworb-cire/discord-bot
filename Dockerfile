@@ -2,6 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 COPY pyproject.toml /app
+COPY alembic.ini /app
 COPY uv.lock /app
 
 RUN pip install uv &&  \
@@ -9,6 +10,7 @@ RUN pip install uv &&  \
 
 
 COPY src /app/src
+COPY migrations /app/migrations
 ENV PYTHONPATH=/app/src
 
 ENTRYPOINT ["uv", "run", "--", "sh", "-c", "exec \"$@\"", "dummy"]

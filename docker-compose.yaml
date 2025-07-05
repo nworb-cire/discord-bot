@@ -6,8 +6,8 @@ services:
       - db
       - redis
       - migrate
-    volumes:
-      - ./src:/app/src
+#    volumes:
+#      - ./src:/app/src
 
   db:
     image: postgres:16-alpine
@@ -32,9 +32,9 @@ services:
 #    env_file: .env
     depends_on:
       - db
-    volumes:
-      - ./migrations:/app/migrations
-      - ./alembic.ini:/app/alembic.ini
+#    volumes:
+#      - ./migrations:/app/migrations
+#      - ./alembic.ini:/app/alembic.ini
     command: "alembic upgrade head"
     restart: "no"
 
