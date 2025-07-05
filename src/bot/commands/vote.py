@@ -4,7 +4,6 @@ import logging
 import discord
 from discord.ext import commands
 from sqlalchemy.future import select
-from sqlalchemy import func
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Election, Nomination, Vote
@@ -34,8 +33,11 @@ class BallotModal(discord.ui.Modal, title="Vote"):
             if not election:
                 raise Exception("Voting is not currently open.")
             if sum(v**2 for v in entries.values()) > max_score:
-                raise Exception(f"Total score exceeds maximum allowed ({max_score})."
-                                f"Quadratic scoring is used, so scores are squared before summing.")
+                raise Exception(
+                    f"Total score exceeds maximum allowed ({max_score}). "
+                    f"Quadratic scoring is used, so scores are squared before summing. "
+                    f"i.e., if you cast 3, 3, and 2, the total is 3^2 + 3^2 + 2^2 = 22."
+                )
             for book_id, score in entries.items():
                 vote = Vote(
                     election_id=election.id,
@@ -80,15 +82,11 @@ class Ballot(commands.Cog):
                 await interaction.response.send_message("Voting not open.", ephemeral=True)
                 return
             books_result = await session.execute(
-                select(Book).join(Nomination, Book.id == Nomination.book_id)
-                .where(Nomination.id.in_(election.ballot))
+                select(Book)
+                .where(Book.id.in_(election.ballot))
             )
             books = books_result.scalars().all()
-            result = await session.execute(
-                select(Vote.book_id, func.sum(Vote.weight).label("total_votes"))
-                .where(Vote.election_id == election.id)
-                .group_by(Vote.book_id)
-                .order_by(func.sum(Vote.weight).desc())  # TODO: break ties consistently
-            )
-            vote_totals = result.all()
+        if len(books) == 0:
+            await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
+            return
         await interaction.response.send_modal(BallotModal(books))
