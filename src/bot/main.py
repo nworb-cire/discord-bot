@@ -1,6 +1,8 @@
 import discord
 from discord.ext import tasks, commands
 from loguru import logger
+
+from bot.commands.vote import Ballot
 from bot.config import get_settings
 from bot.commands.nominate import Nominate
 from bot.commands.voting_session import VotingSession
@@ -16,6 +18,7 @@ bot = commands.Bot(
 async def setup_commands():
     await bot.add_cog(Nominate(bot))
     await bot.add_cog(VotingSession(bot))
+    await bot.add_cog(Ballot(bot))
 
 
 @bot.event
