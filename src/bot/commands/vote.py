@@ -34,7 +34,8 @@ class BallotModal(discord.ui.Modal, title="Vote"):
             if not election:
                 raise Exception("Voting is not currently open.")
             if sum(v**2 for v in entries.values()) > max_score:
-                raise Exception(f"Total score exceeds maximum allowed ({max_score}).")
+                raise Exception(f"Total score exceeds maximum allowed ({max_score})."
+                                f"Quadratic scoring is used, so scores are squared before summing.")
             for book_id, score in entries.items():
                 vote = Vote(
                     election_id=election.id,
