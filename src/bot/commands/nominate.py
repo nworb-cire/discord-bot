@@ -27,7 +27,7 @@ class Nominate(commands.Cog):
         description="Nominate a book by its ISBN",
     )
     async def nominate(self, interaction: discord.Interaction, isbn: str):
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=True)
         isbn = re.sub(r"[^\dX]", "", isbn)
 
         async with async_session() as session:
@@ -83,7 +83,8 @@ class Nominate(commands.Cog):
         summary += f"\n\nNominated by {interaction.user.mention}."
         embed = discord.Embed(title=book.title, description=summary)
         await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
-        await interaction.followup.send(f"Nominated *{full_title}*")
+        await interaction.followup.send(f"Nominated *{full_title}*", ephemeral=True)
+        await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title}*")
 
     async def open_library_search(self, isbn: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
