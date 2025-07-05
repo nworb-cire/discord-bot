@@ -30,6 +30,7 @@ class Nominate(commands.Cog):
         await interaction.response.defer(ephemeral=False)
         isbn = re.sub(r"[^\dX]", "", isbn)
 
+        summary = full_title = ""  # FIXME: if the book already exists, this crashes
         async with async_session() as session:
             book_stmt = select(Book).where(Book.isbn == isbn)
             book = (await session.execute(book_stmt)).scalar_one_or_none()
