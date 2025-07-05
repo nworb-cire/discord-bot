@@ -11,7 +11,7 @@ settings = get_settings()
 async def close_expired_elections(bot: discord.Client):
     async with async_session() as session:
         election = await get_open_election(session)
-        if not election:
+        if not election or election.closes_at > utcnow():
             return
         await close_and_tally(bot, session, election)
 
