@@ -85,30 +85,25 @@ class VotingSession(commands.Cog):
                 opened_at=now,
                 closes_at=closes_at,
                 ballot=ballot,
-                message_id=0,
             )
             session.add(election)
             await session.commit()
+        await self._election_embed(interaction, election, ballot, closes_at)
 
+    async def _election_embed(self, interaction: discord.Interaction, election: Election, ballot: list[int], closes_at: datetime):
         closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
             title="Book Club Election",
             description=f"Vote with `/vote`! "
                         f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
         )
-        for idx, bid in enumerate(ballot, start=1):
-            book = await session.get(Book, bid)
-            summary = book.summary or "No summary available."
-            if len(summary) > 1024:
-                summary = summary[:1021] + "..."
-            embed.add_field(name=f"{idx}. {book.title}", value=summary, inline=False)
-        msg = await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
         async with async_session() as session:
-            await session.execute(
-                select(Election).where(Election.id == election.id).execution_options(synchronize_session="fetch")
-            )
-            election.message_id = msg.id
-            await session.commit()
+            for idx, bid in enumerate(ballot, start=1):
+                book = await session.get(Book, bid)
+                summary = book.summary or "No summary available."
+                if len(summary) > 1024:
+                    summary = summary[:1021] + "..."
+                embed.add_field(name=f"{idx}. {book.title}", value=summary, inline=False)
         await interaction.response.send_message("Election opened.", ephemeral=True)
 
     @app_commands.command(

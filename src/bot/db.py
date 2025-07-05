@@ -50,7 +50,6 @@ class Election(Base):
     closed_by: Mapped[int] = mapped_column(BigInteger, nullable=True)
     closed_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     ballot: Mapped[list[int]] = mapped_column(JSON)
-    message_id: Mapped[int] = mapped_column(BigInteger)
     winner: Mapped[int] = mapped_column(ForeignKey("books.id"), nullable=True)
 
 
