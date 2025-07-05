@@ -104,19 +104,28 @@ class VotingSession(commands.Cog):
                 return
 
             election.closed_at = utcnow()
+
+            votes = (
+                await session.execute(
+                    select(Book, func.sum(Vote.weight).label("total_votes"))
+                    .join(Book, Book.id == Vote.book_id)
+                    .where(Vote.election_id == election.id)
+                    .group_by(Book)
+                    .order_by(func.sum(Vote.weight).desc())  # TODO: break ties consistently
+                )
+            )
+            all_votes = votes.all()
+            winner, _ = all_votes[0] if all_votes else (None, 0)
+            if not winner:
+                await interaction.response.send_message("No votes were cast.")
+                return
+            election.winner = winner.id
+
             await session.commit()
 
         embed = discord.Embed(title="Election Results", description="Voting has ended.")
-        book = await session.get(Book, election.ballot[0])
-        embed.add_field(name="Winner", value=book.title, inline=False)
-        for idx, bid in enumerate(election.ballot):
-            book = await session.get(Book, bid)
-            votes = (
-                await session.execute(
-                    select(func.sum(Vote.weight))
-                    .where(Vote.election_id == election.id, Vote.book_id == bid)
-                )
-            ).scalar() or 0
-            embed.add_field(name=f"{idx + 1}. {book.title}", value=f"Votes: {votes}", inline=False)
+        embed.add_field(name="Winner", value=winner.title, inline=False)
+        for idx, (book, votes) in enumerate(all_votes, start=1):
+            embed.add_field(name=f"{idx}. {book.title}", value=f"Votes: {votes}", inline=False)
         await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
         await interaction.response.send_message("Election closed and results announced.", ephemeral=True)

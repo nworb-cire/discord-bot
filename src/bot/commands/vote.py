@@ -4,6 +4,7 @@ import logging
 import discord
 from discord.ext import commands
 from sqlalchemy.future import select
+from sqlalchemy import func
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Election, Nomination, Vote
@@ -41,6 +42,7 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                     book_id=book_id,
                     weight=score,
                 )
+               # fixme: users cannot change their votes due to uniqueness constraints. maybe use upsert?
                 session.add(vote)
             await session.commit()
 
@@ -81,4 +83,11 @@ class Ballot(commands.Cog):
                 .where(Nomination.id.in_(election.ballot))
             )
             books = books_result.scalars().all()
+            result = await session.execute(
+                select(Vote.book_id, func.sum(Vote.weight).label("total_votes"))
+                .where(Vote.election_id == election.id)
+                .group_by(Vote.book_id)
+                .order_by(func.sum(Vote.weight).desc())  # TODO: break ties consistently
+            )
+            vote_totals = result.all()
         await interaction.response.send_modal(BallotModal(books))
