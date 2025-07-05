@@ -14,8 +14,10 @@ log = logging.getLogger(__name__)
 settings = get_settings()
 
 class BallotModal(discord.ui.Modal, title="Vote"):
-    def __init__(self, noms: list[Book]):
+    def __init__(self, noms: list[Book], is_bookclub: bool = False):
         super().__init__()
+        self.is_bookclub = is_bookclub
+        self.title = f"Points to distribute: {settings.weight_inner if is_bookclub else settings.weight_outer}"
         self.noms = noms
         for nom in noms:
             self.add_item(
@@ -27,8 +29,8 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 )
             )
 
-    async def record_votes(self, user_id, entries, is_bookclub):
-        max_score = settings.weight_inner if is_bookclub else settings.weight_outer
+    async def record_votes(self, user_id, entries):
+        max_score = settings.weight_inner if self.is_bookclub else settings.weight_outer
         async with async_session() as session:
             election = await get_open_election(session)
             if not election:
@@ -62,9 +64,8 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 await inter.response.send_message("Numbers only.", ephemeral=True)
                 return
             entries[nom.id] = int(txt)
-        roles = [r.name.lower() for r in inter.user.roles]
         try:
-            await self.record_votes(inter.user.id, entries, settings.role_highweight_id in roles)
+            await self.record_votes(inter.user.id, entries)
         except Exception as e:
             log.info("vote_failed", extra={"user": str(inter.user), "error": str(e)})
             await inter.response.send_message(str(e), ephemeral=True)
@@ -93,4 +94,6 @@ class Ballot(commands.Cog):
         if len(books) == 0:
             await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
             return
-        await interaction.response.send_modal(BallotModal(books))
+        user_roles = [r.id for r in interaction.user.roles]
+        is_bookclub = settings.role_highweight_id  in user_roles
+        await interaction.response.send_modal(BallotModal(books, is_bookclub=is_bookclub))
