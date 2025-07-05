@@ -1,12 +1,15 @@
+from datetime import timedelta, datetime
+
 import discord
 from discord import app_commands, Permissions
 from discord.ext import commands
-from sqlalchemy import select, func, literal_column, true, update
+from sqlalchemy import select, func, literal_column, true
 from sqlalchemy.sql import lateral
-from bot.db import async_session, Nomination, Election, Vote, Book
-from bot.utils import utcnow
-from datetime import timedelta, datetime
+
 from bot.config import get_settings
+from bot.db import async_session, Nomination, Election, Vote, Book
+from bot.election import close_and_tally
+from bot.utils import utcnow, get_open_election
 
 settings = get_settings()
 
@@ -56,13 +59,6 @@ class VotingSession(commands.Cog):
         ballot_ids = [bid for bid in ballot_ids if bid not in previous_winners]
         return ballot_ids
 
-    async def _get_open_election(self, session):
-        return (await session.execute(
-            select(Election)
-            .where(Election.closed_at.is_(None))
-            .order_by(Election.opened_at.desc())
-        )).scalar_one_or_none()
-
     @app_commands.command(
         name="open_voting",
         description="Open an election for book club",
@@ -71,7 +67,7 @@ class VotingSession(commands.Cog):
     async def open_voting(self, interaction: discord.Interaction, hours: int = 72):
         now = utcnow()
         async with async_session() as session:
-            if await self._get_open_election(session):
+            if await get_open_election(session):
                 await interaction.response.send_message("An election is already open.", ephemeral=True)
                 return
 
@@ -104,6 +100,7 @@ class VotingSession(commands.Cog):
                 if len(summary) > 1024:
                     summary = summary[:1021] + "..."
                 embed.add_field(name=f"{idx}. {book.title}", value=summary, inline=False)
+        await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
         await interaction.response.send_message("Election opened.", ephemeral=True)
 
     @app_commands.command(
@@ -113,43 +110,12 @@ class VotingSession(commands.Cog):
     @app_commands.default_permissions(Permissions(manage_roles=True))
     async def close_voting(self, interaction: discord.Interaction):
         async with async_session() as session:
-            election = await self._get_open_election(session)
+            election = await get_open_election(session)
             if not election:
                 await interaction.response.send_message("No open election found.", ephemeral=True)
                 return
-
-            # close *all* elections, not just the "current" one, just in case
-            await session.execute(
-                update(Election)
-                .where(Election.closed_at.is_(None))
-                .values(
-                    closed_by=interaction.user.id,
-                    closed_at=utcnow(),
-                )
-            )
-            await session.commit()
-
-            votes = (
-                await session.execute(
-                    select(Book, func.sum(Vote.weight).label("total_votes"))
-                    .join(Book, Book.id == Vote.book_id)
-                    .where(Vote.election_id == election.id)
-                    .group_by(Book)
-                    .order_by(func.sum(Vote.weight).desc())  # TODO: break ties consistently
-                )
-            )
-            all_votes = votes.all()
-            winner, _ = all_votes[0] if all_votes else (None, 0)
-            if not winner:
-                await interaction.response.send_message("No votes were cast.")
-                return
-            election.winner = winner.id
-
-            await session.commit()
-
-        embed = discord.Embed(title="Election Results", description="Voting has ended.")
-        embed.add_field(name="Winner", value=winner.title, inline=False)
-        for idx, (book, votes) in enumerate(all_votes, start=1):
-            embed.add_field(name=f"{idx}. {book.title}", value=f"Votes: {votes}", inline=False)
-        await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
-        await interaction.response.send_message("Election closed and results announced.", ephemeral=True)
+            winner = await close_and_tally(self.bot, session, election, closed_by=interaction.user.id)
+        if winner:
+            await interaction.response.send_message("Election closed and results announced.", ephemeral=True)
+        else:
+            await interaction.response.send_message("No votes were cast.")
