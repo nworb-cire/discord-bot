@@ -46,6 +46,14 @@ class VotingSession(commands.Cog):
             .limit(settings.ballot_size)
         )
         ballot_ids = [row.id for row in (await session.execute(scored)).all()]
+
+        # filter out previous winners, todo do this in the query
+        previous_winners = (
+            await session.execute(
+                select(Election.winner).where(Election.winner.is_not(None))
+            )
+        ).scalars().all()
+        ballot_ids = [bid for bid in ballot_ids if bid not in previous_winners]
         return ballot_ids
 
     async def _get_open_election(self, session):
@@ -68,6 +76,9 @@ class VotingSession(commands.Cog):
                 return
 
             ballot = await self._get_ballot(session)
+            if not ballot:
+                await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
+                return
             closes_at = now + timedelta(hours=hours)
             election = Election(
                 opener_discord_id=interaction.user.id,
