@@ -33,7 +33,7 @@ class Nomination(Base):
     __tablename__ = "nominations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"))
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"))
     nominator_discord_id: Mapped[int] = mapped_column(BigInteger)
     message_id: Mapped[int] = mapped_column(BigInteger)
     reacted_users: Mapped[list[int]] = mapped_column(JSON)
@@ -50,15 +50,15 @@ class Election(Base):
     closed_by: Mapped[int] = mapped_column(BigInteger, nullable=True)
     closed_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     ballot: Mapped[list[int]] = mapped_column(JSON)
-    winner: Mapped[int] = mapped_column(ForeignKey("books.id"), nullable=True)
+    winner: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="SET NULL"), nullable=True)
 
 
 class Vote(Base):
     __tablename__ = "votes"
 
-    election_id: Mapped[int] = mapped_column(ForeignKey("elections.id"), primary_key=True)
+    election_id: Mapped[int] = mapped_column(ForeignKey("elections.id", ondelete="CASCADE"), primary_key=True)
     voter_discord_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
     weight: Mapped[int] = mapped_column(Integer)
 
 
