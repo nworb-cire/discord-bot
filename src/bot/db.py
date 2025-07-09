@@ -59,7 +59,7 @@ class Vote(Base):
     election_id: Mapped[int] = mapped_column(ForeignKey("elections.id", ondelete="CASCADE"), primary_key=True)
     voter_discord_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
-    weight: Mapped[int] = mapped_column(Integer)
+    weight: Mapped[float] = mapped_column(Numeric)
 
 
 class Prediction(Base):

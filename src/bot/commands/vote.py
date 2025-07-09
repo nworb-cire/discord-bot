@@ -63,7 +63,12 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 log.info("vote_failed", extra={"user": str(inter.user), "reason": "non-numeric input"})
                 await inter.response.send_message("Numbers only.", ephemeral=True)
                 return
-            entries[nom.id] = int(txt)
+            try:
+                entries[nom.id] = float(txt)
+            except ValueError:
+                log.info("vote_failed", extra={"user": str(inter.user), "reason": "invalid float"})
+                await inter.response.send_message("Invalid number format.", ephemeral=True)
+                return
         try:
             await self.record_votes(inter.user.id, entries)
         except Exception as e:
