@@ -89,7 +89,8 @@ class Nominate(commands.Cog):
         session.add(nomination)
         await session.commit()
         await interaction.followup.send(f"Nominated *{full_title}*", ephemeral=True)
-        await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title}*")
+        if interaction.channel.id != settings.nom_channel_id:
+            await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title}*")
 
     async def open_library_search(self, isbn: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
