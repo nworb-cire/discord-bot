@@ -1,8 +1,10 @@
+import asyncio
 from datetime import timedelta, datetime
 
 import discord
 from discord import app_commands, Permissions
 from discord.ext import commands
+from loguru import logger
 from sqlalchemy import select, func, literal_column, true
 from sqlalchemy.sql import lateral
 
@@ -14,50 +16,68 @@ from bot.utils import utcnow, get_open_election
 settings = get_settings()
 
 
-async def get_top_noms(session, limit: int = 0) -> list[tuple[int, int, int]]:
-    sub_votes = (
-        select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
-        .group_by(Vote.book_id)
-        .subquery()
-    )
-
-    elem_col = func.json_array_elements_text(
-        Nomination.reacted_users
-    ).label("elem")
-    elem_sel = select(elem_col)
-    unnest_lateral = lateral(elem_sel).alias("n_un")
-    nominations = (
-        select(Nomination.book_id, func.count(func.distinct(unnest_lateral.c.elem)).label("reacts"))
-        .select_from(Nomination)
-        .join(unnest_lateral, true())  # cross join
-        .group_by(Nomination.book_id)
-        .subquery()
-    )
-
-    scored = (
-        select(
-            Book.id,
-            func.coalesce(nominations.c.reacts, 0).label("reacts"),
-            func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
-            (func.coalesce(nominations.c.reacts, 0) + func.coalesce(sub_votes.c.vote_sum, 0)).label("score"),
-        )
-        .join(nominations, nominations.c.book_id == Book.id, isouter=True)
-        .join(sub_votes, sub_votes.c.book_id == Book.id, isouter=True)
-        .where(
-            Book.id.not_in(
-                select(Election.winner).where(Election.winner.is_not(None))
-            )
-        )
-        .order_by(literal_column("score").desc(), Book.created_at)
-    )
-    if limit > 0:
-        scored = scored.limit(limit)
-    return (await session.execute(scored)).all()
-
-
 class VotingSession(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    async def get_reacts_for_nomination(self, nomination: Nomination) -> int:
+        """Get the number of unique users who reacted to a nomination."""
+        channel = self.bot.get_channel(settings.nom_channel_id)
+        if not channel:
+            channel = await self.bot.fetch_channel(settings.nom_channel_id)
+        logger.info(f"Fetching message for nomination {nomination.id} in channel {channel.name}, {channel.id}")
+        logger.info(f"1392551508909883492, {nomination.message_id}, {nomination.message_id == 1392551508909883492}")
+        message = await channel.fetch_message(nomination.message_id)
+
+        unique_users = set()
+        for reaction in message.reactions:
+            async for user in reaction.users():
+                unique_users.add(user.id)
+        return len(unique_users)
+
+    async def update_all_nominations(self, session):
+        nominations = await session.execute(select(Nomination))
+        nominations = nominations.scalars().all()
+
+        async def update_nom(nomination):
+            nomination.reactions = await self.get_reacts_for_nomination(nomination)
+            session.add(nomination)
+
+        await asyncio.gather(*(update_nom(n) for n in nominations))
+        await session.commit()
+
+    async def get_top_noms(self, session, limit: int = 0) -> list[tuple[int, int, float, float]]:
+        await self.update_all_nominations(session)
+        sub_votes = (
+            select(
+                Vote.book_id,
+                func.sum(Vote.weight).label("vote_sum")
+            )
+            .group_by(Vote.book_id)
+            .subquery()
+        )
+        nominations_table = Nomination.__table__
+        winner_subq = select(Election.winner).where(Election.winner.is_not(None)).scalar_subquery()
+        stmt = (
+            select(
+                Book.id.label("book_id"),
+                func.coalesce(nominations_table.c.reactions, 0).label("reactions"),
+                func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
+                (
+                        func.coalesce(nominations_table.c.reactions, 0) +
+                        func.coalesce(sub_votes.c.vote_sum, 0)
+                ).label("score")
+            )
+            .select_from(Book)
+            .outerjoin(nominations_table, nominations_table.c.book_id == Book.id)
+            .outerjoin(sub_votes, sub_votes.c.book_id == Book.id)
+            .where(~Book.id.in_(winner_subq))
+            .order_by(literal_column("score").desc(), Book.created_at)
+        )
+        if limit > 0:
+            stmt = stmt.limit(limit)
+        result = await session.execute(stmt)
+        return result.all()
 
     @app_commands.command(
         name="open_voting",
@@ -71,7 +91,7 @@ class VotingSession(commands.Cog):
                 await interaction.response.send_message("An election is already open.", ephemeral=True)
                 return
 
-            ballot = await get_top_noms(session, limit=settings.ballot_size)
+            ballot = await self.get_top_noms(session, limit=settings.ballot_size)
             if not ballot:
                 await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
                 return
@@ -125,10 +145,11 @@ class VotingSession(commands.Cog):
         description="Preview the current ballot for the next election",
     )
     async def ballot_preview(self, interaction: discord.Interaction, limit: int = settings.ballot_size):
+        await interaction.response.defer(ephemeral=True)
         async with async_session() as session:
-            ballot = await get_top_noms(session, limit=limit)
+            ballot = await self.get_top_noms(session, limit=limit)
             if not ballot:
-                await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
+                await interaction.followup.send("No nominations available for voting.", ephemeral=True)
                 return
             embed = discord.Embed(title="Upcoming Ballot Preview")
             for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
@@ -140,4 +161,4 @@ class VotingSession(commands.Cog):
                           f"Reactions: {reacts}",
                     inline=False,
                 )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)

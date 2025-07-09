@@ -72,7 +72,7 @@ class Nominate(commands.Cog):
                 book_id=book.id,
                 nominator_discord_id=interaction.user.id,
                 message_id=0,
-                reacted_users=[],
+                reactions=0,
                 created_at=utcnow(),
             )
             session.add(nomination)
