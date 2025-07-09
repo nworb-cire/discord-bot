@@ -14,50 +14,50 @@ from bot.utils import utcnow, get_open_election
 settings = get_settings()
 
 
+async def get_top_noms(session, limit: int = 0) -> list[tuple[int, int, int]]:
+    sub_votes = (
+        select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
+        .group_by(Vote.book_id)
+        .subquery()
+    )
+
+    elem_col = func.json_array_elements_text(
+        Nomination.reacted_users
+    ).label("elem")
+    elem_sel = select(elem_col)
+    unnest_lateral = lateral(elem_sel).alias("n_un")
+    nominations = (
+        select(Nomination.book_id, func.count(func.distinct(unnest_lateral.c.elem)).label("reacts"))
+        .select_from(Nomination)
+        .join(unnest_lateral, true())  # cross join
+        .group_by(Nomination.book_id)
+        .subquery()
+    )
+
+    scored = (
+        select(
+            Book.id,
+            func.coalesce(nominations.c.reacts, 0).label("reacts"),
+            func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
+            (func.coalesce(nominations.c.reacts, 0) + func.coalesce(sub_votes.c.vote_sum, 0)).label("score"),
+        )
+        .join(nominations, nominations.c.book_id == Book.id, isouter=True)
+        .join(sub_votes, sub_votes.c.book_id == Book.id, isouter=True)
+        .where(
+            Book.id.not_in(
+                select(Election.winner).where(Election.winner.is_not(None))
+            )
+        )
+        .order_by(literal_column("score").desc(), Book.created_at)
+    )
+    if limit > 0:
+        scored = scored.limit(limit)
+    return (await session.execute(scored)).all()
+
+
 class VotingSession(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    async def _get_ballot(self, session):
-        sub_votes = (
-            select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
-            .group_by(Vote.book_id)
-            .subquery()
-        )
-
-        elem_col = func.json_array_elements_text(
-            Nomination.reacted_users
-        ).label("elem")
-        elem_sel = select(elem_col)
-        unnest_lateral = lateral(elem_sel).alias("n_un")
-        nominations = (
-            select(Nomination.book_id, func.count(func.distinct(unnest_lateral.c.elem)).label("reacts"))
-            .select_from(Nomination)
-            .join(unnest_lateral, true())  # cross join
-            .group_by(Nomination.book_id)
-            .subquery()
-        )
-
-        scored = (
-            select(
-                Book.id,
-                (func.coalesce(nominations.c.reacts, 0) + func.coalesce(sub_votes.c.vote_sum, 0)).label("score"),
-            )
-            .join(nominations, nominations.c.book_id == Book.id, isouter=True)
-            .join(sub_votes, sub_votes.c.book_id == Book.id, isouter=True)
-            .order_by(literal_column("score").desc(), Book.created_at)
-            .limit(settings.ballot_size)
-        )
-        ballot_ids = [row.id for row in (await session.execute(scored)).all()]
-
-        # filter out previous winners, todo do this in the query
-        previous_winners = (
-            await session.execute(
-                select(Election.winner).where(Election.winner.is_not(None))
-            )
-        ).scalars().all()
-        ballot_ids = [bid for bid in ballot_ids if bid not in previous_winners]
-        return ballot_ids
 
     @app_commands.command(
         name="open_voting",
@@ -71,7 +71,7 @@ class VotingSession(commands.Cog):
                 await interaction.response.send_message("An election is already open.", ephemeral=True)
                 return
 
-            ballot = await self._get_ballot(session)
+            ballot = await get_top_noms(session, limit=settings.ballot_size)
             if not ballot:
                 await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
                 return
@@ -119,3 +119,25 @@ class VotingSession(commands.Cog):
             await interaction.response.send_message("Election closed and results announced.", ephemeral=True)
         else:
             await interaction.response.send_message("No votes were cast.")
+
+    @app_commands.command(
+        name="ballot_preview",
+        description="Preview the current ballot for the next election",
+    )
+    async def ballot_preview(self, interaction: discord.Interaction, limit: int = settings.ballot_size):
+        async with async_session() as session:
+            ballot = await get_top_noms(session, limit=limit)
+            if not ballot:
+                await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
+                return
+            embed = discord.Embed(title="Upcoming Ballot Preview")
+            for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
+                book = await session.get(Book, bid)
+                embed.add_field(
+                    name=f"{idx}. {book.title}",
+                    value=f"Score: {score:.1f}\n"
+                          f"Previous votes: {votes:.1f}\n"
+                          f"Reactions: {reacts}",
+                    inline=False,
+                )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
