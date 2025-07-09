@@ -81,6 +81,8 @@ class Nominate(commands.Cog):
         if summary:
             summary += "\n\nNote: AI generated summaries may be inaccurate."
         summary += f"\n\nNominated by {interaction.user.mention}."
+        if book.length:
+            summary += f" {book.length} pages."
         embed = discord.Embed(title=book.title, description=summary)
         await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
         await interaction.followup.send(f"Nominated *{full_title}*", ephemeral=True)
