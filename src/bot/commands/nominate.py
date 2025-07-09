@@ -84,7 +84,10 @@ class Nominate(commands.Cog):
         if book.length:
             summary += f" {book.length} pages."
         embed = discord.Embed(title=book.title, description=summary)
-        await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
+        message = await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
+        nomination.message_id = message.id
+        session.add(nomination)
+        await session.commit()
         await interaction.followup.send(f"Nominated *{full_title}*", ephemeral=True)
         await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title}*")
 
