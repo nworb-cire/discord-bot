@@ -147,6 +147,9 @@ class VotingSession(commands.Cog):
     async def ballot_preview(self, interaction: discord.Interaction, limit: int = settings.ballot_size):
         await interaction.response.defer(ephemeral=True)
         async with async_session() as session:
+            if await get_open_election(session):
+                await interaction.followup.send("An election is currently open. Cannot preview ballot.", ephemeral=True)
+                return
             ballot = await self.get_top_noms(session, limit=limit)
             if not ballot:
                 await interaction.followup.send("No nominations available for voting.", ephemeral=True)
