@@ -5,6 +5,19 @@ services:
       - db
       - redis
       - migrate
+    environment:
+      - DISCORD_BOT_TOKEN
+      - BOOKCLUB_CHANNEL_ID
+      - BOOKCLUB_NOM_CHANNEL_ID
+      - BOOKCLUB_RESULTS_CHANNEL_ID
+      - BOOKCLUB_ROLE_ID
+      - VOTE_WEIGHT_INNER
+      - VOTE_WEIGHT_OUTER
+      - BALLOT_SIZE
+      - OPENAI_API_KEY
+      - DATABASE_URL
+      - REDIS_URL
+      - PREDICTIONS_CHANNEL_ID
 
   db:
     image: postgres:16-alpine
@@ -30,6 +43,20 @@ services:
       - db
     command: "alembic upgrade head"
     restart: "no"
+    environment:
+      - DISCORD_BOT_TOKEN
+      - BOOKCLUB_CHANNEL_ID
+      - BOOKCLUB_NOM_CHANNEL_ID
+      - BOOKCLUB_RESULTS_CHANNEL_ID
+      - BOOKCLUB_ROLE_ID
+      - VOTE_WEIGHT_INNER
+      - VOTE_WEIGHT_OUTER
+      - BALLOT_SIZE
+      - OPENAI_API_KEY
+      - DATABASE_URL
+      - REDIS_URL
+      - PREDICTIONS_CHANNEL_ID
+
 
 volumes:
   pgdata:
