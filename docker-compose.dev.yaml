@@ -1,10 +1,13 @@
 services:
   bot:
     build: .
+    env_file: .env
     depends_on:
       - db
       - redis
       - migrate
+    volumes:
+      - ./src:/app/src
 
   db:
     image: postgres:16-alpine
@@ -14,6 +17,8 @@ services:
       POSTGRES_DB: bookclub
     volumes:
       - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bookclub"]
       interval: 5s
@@ -26,8 +31,12 @@ services:
 
   migrate:
     build: .
+    env_file: .env
     depends_on:
       - db
+    volumes:
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini
     command: "alembic upgrade head"
     restart: "no"
 
