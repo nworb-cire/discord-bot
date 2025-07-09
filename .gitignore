@@ -1,5 +1,5 @@
 # Environment and IDE
-.env
+.env*
 .venv/
 .idea/
 .vscode/
