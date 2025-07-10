@@ -4,9 +4,7 @@ from datetime import timedelta, datetime
 import discord
 from discord import app_commands, Permissions
 from discord.ext import commands
-from loguru import logger
-from sqlalchemy import select, func, literal_column, true
-from sqlalchemy.sql import lateral
+from sqlalchemy import select, func, literal_column
 
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
@@ -25,15 +23,13 @@ class VotingSession(commands.Cog):
         channel = self.bot.get_channel(settings.nom_channel_id)
         if not channel:
             channel = await self.bot.fetch_channel(settings.nom_channel_id)
-        logger.info(f"Fetching message for nomination {nomination.id} in channel {channel.name}, {channel.id}")
-        logger.info(f"1392551508909883492, {nomination.message_id}, {nomination.message_id == 1392551508909883492}")
         message = await channel.fetch_message(nomination.message_id)
 
         unique_users = set()
         for reaction in message.reactions:
             async for user in reaction.users():
                 unique_users.add(user.id)
-        return len(unique_users)
+        return len(unique_users - {nomination.nominator_discord_id})
 
     async def update_all_nominations(self, session):
         nominations = await session.execute(select(Nomination))
@@ -64,8 +60,8 @@ class VotingSession(commands.Cog):
                 func.coalesce(nominations_table.c.reactions, 0).label("reactions"),
                 func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
                 (
-                        func.coalesce(nominations_table.c.reactions, 0) +
-                        func.coalesce(sub_votes.c.vote_sum, 0)
+                    func.coalesce(nominations_table.c.reactions, 0) +
+                    func.coalesce(sub_votes.c.vote_sum, 0)
                 ).label("score")
             )
             .select_from(Book)
