@@ -89,16 +89,17 @@ class VotingSession(commands.Cog):
     )
     @app_commands.default_permissions(Permissions(manage_roles=True))
     async def open_voting(self, interaction: discord.Interaction, hours: int = 72):
+        await interaction.response.defer(ephemeral=True)
         now = utcnow()
         async with async_session() as session:
             if await get_open_election(session):
-                await interaction.response.send_message("An election is already open.", ephemeral=True)
+                await interaction.followup.send("An election is already open.", ephemeral=True)
                 return
 
             ballot = await self.get_top_noms(session, limit=settings.ballot_size)
             ballot_ids = [bid for bid, _, _, _ in ballot]
             if not ballot:
-                await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
+                await interaction.followup.send("No nominations available for voting.", ephemeral=True)
                 return
             closes_at = now + timedelta(hours=hours)
             election = Election(
@@ -126,7 +127,7 @@ class VotingSession(commands.Cog):
                     summary = summary[:1021] + "..."
                 embed.add_field(name=f"{idx}. {book.title}", value=summary, inline=False)
         await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
-        await interaction.response.send_message("Election opened.", ephemeral=True)
+        await interaction.followup.send("Election opened.", ephemeral=True)
 
     @app_commands.command(
         name="close_voting",
