@@ -73,7 +73,15 @@ class VotingSession(commands.Cog):
         if limit > 0:
             stmt = stmt.limit(limit)
         result = await session.execute(stmt)
-        return result.all()
+        return [
+            (
+                int(row.book_id),
+                int(row.reactions),
+                float(row.vote_sum) if row.vote_sum is not None else 0.0,
+                float(row.score) if row.score is not None else 0.0
+            )
+            for row in result.all()
+        ]
 
     @app_commands.command(
         name="open_voting",
@@ -88,6 +96,7 @@ class VotingSession(commands.Cog):
                 return
 
             ballot = await self.get_top_noms(session, limit=settings.ballot_size)
+            ballot_ids = [bid for bid, _, _, _ in ballot]
             if not ballot:
                 await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
                 return
@@ -96,11 +105,11 @@ class VotingSession(commands.Cog):
                 opener_discord_id=interaction.user.id,
                 opened_at=now,
                 closes_at=closes_at,
-                ballot=ballot,
+                ballot=ballot_ids,
             )
             session.add(election)
             await session.commit()
-        await self._election_embed(interaction, ballot, closes_at)
+        await self._election_embed(interaction, ballot_ids, closes_at)
 
     async def _election_embed(self, interaction: discord.Interaction, ballot: list[int], closes_at: datetime):
         closes_at = int(closes_at.timestamp())
