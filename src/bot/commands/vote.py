@@ -99,6 +99,8 @@ class Ballot(commands.Cog):
         if len(books) == 0:
             await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
             return
+        # sort books to be in same order as ballot
+        books.sort(key=lambda b: election.ballot.index(b.id))
         user_roles = [r.id for r in interaction.user.roles]
         is_bookclub = settings.role_highweight_id  in user_roles
         await interaction.response.send_modal(BallotModal(books, is_bookclub=is_bookclub))
