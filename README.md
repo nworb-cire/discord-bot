@@ -53,6 +53,16 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    docker compose exec bot pytest --maxfail=1 --disable-warnings -q
    ```
 
+## Git hooks
+
+Install the provided pre-commit hook so commits run the unit test suite automatically.
+
+```bash
+uv tool run pre-commit install --hook-type pre-commit
+```
+
+The hook runs `uv run pytest tests` on each commit. Set `SKIP=unit-tests` when committing if you need to bypass it temporarily.
+
 ## Contributing
 
 1. Fork the repository and create a feature branch: `git checkout -b feature/my-feature`
