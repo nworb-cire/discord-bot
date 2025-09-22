@@ -3,7 +3,8 @@ repos:
     hooks:
       - id: unit-tests
         name: Run unit tests
-        entry: uv run pytest tests
+        entry: bash
+        args: [-c, 'UV_CACHE_DIR=.uv-cache uv run pytest tests']
         language: system
         pass_filenames: false
         always_run: true

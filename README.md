@@ -61,7 +61,7 @@ Install the provided pre-commit hook so commits run the unit test suite automati
 uv tool run pre-commit install --hook-type pre-commit
 ```
 
-The hook runs `uv run pytest tests` on each commit. Set `SKIP=unit-tests` when committing if you need to bypass it temporarily.
+The hook runs `uv run pytest tests` on each commit. Set `SKIP=unit-tests` when committing if you need to bypass it temporarily. The hook pins `UV_CACHE_DIR=.uv-cache` so it can write inside the repo sandbox.
 
 ## Contributing
 
