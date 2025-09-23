@@ -36,7 +36,6 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    BOOKCLUB_ROLE_ID=123456
    VOTE_WEIGHT_INNER=100
    VOTE_WEIGHT_OUTER=30
-   BALLOT_SIZE=5
    OPENAI_API_KEY=your_openai_key
    DATABASE_URL=postgresql+asyncpg://user:pwd@db/bot
    REDIS_URL=redis://redis:6379/0
@@ -70,4 +69,3 @@ The hook runs `uv run pytest tests` on each commit. Set `SKIP=unit-tests` when c
 3. Follow code style: `black .` and `flake8 .`.
 4. Commit changes with descriptive messages.
 5. Open a pull request against `main` and request a review.
-

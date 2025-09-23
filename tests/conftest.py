@@ -32,7 +32,6 @@ _DEFAULT_ENV = {
     "BOOKCLUB_ROLE_ID": "5",
     "VOTE_WEIGHT_INNER": "10",
     "VOTE_WEIGHT_OUTER": "5",
-    "BALLOT_SIZE": "3",
     "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
     "REDIS_URL": "redis://localhost:6379/0",
     "OPENAI_API_KEY": "test-openai",

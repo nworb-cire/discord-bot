@@ -37,7 +37,6 @@ _REQUIRED_ENV = {
     "BOOKCLUB_ROLE_ID": "5",
     "VOTE_WEIGHT_INNER": "10",
     "VOTE_WEIGHT_OUTER": "5",
-    "BALLOT_SIZE": "3",
     "REDIS_URL": "redis://localhost:6379/0",
     "OPENAI_API_KEY": "test-openai",
 }
@@ -45,7 +44,9 @@ _REQUIRED_ENV = {
 
 @pytest.fixture(scope="session")
 def base_test_environment() -> Generator[dict[str, str], None, None]:
-    previous: dict[str, str | None] = {key: os.environ.get(key) for key in _REQUIRED_ENV}
+    previous: dict[str, str | None] = {
+        key: os.environ.get(key) for key in _REQUIRED_ENV
+    }
     os.environ.update(_REQUIRED_ENV)
     try:
         yield _REQUIRED_ENV
@@ -83,7 +84,9 @@ def worker_id(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture(scope="session")
-def database_url(postgres_container: PostgresContainer, worker_id: str) -> Generator[str, None, None]:
+def database_url(
+    postgres_container: PostgresContainer, worker_id: str
+) -> Generator[str, None, None]:
     params = _connection_parameters(postgres_container)
     db_name = f"test_{worker_id}_{uuid.uuid4().hex[:8]}"
     admin_url = _build_sync_url(params, params["dbname"])
@@ -104,15 +107,26 @@ def sync_database_url(database_url: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def migrated_database(database_url: str, base_test_environment: dict[str, str]) -> Generator[str, None, None]:
+def migrated_database(
+    database_url: str, base_test_environment: dict[str, str]
+) -> Generator[str, None, None]:
     env = {**os.environ, **base_test_environment, "DATABASE_URL": database_url}
-    subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True, env=env)
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"], check=True, env=env
+    )
     yield database_url
 
 
 @pytest.fixture(scope="session")
-def api_base_url(migrated_database: str, base_test_environment: dict[str, str]) -> Generator[str, None, None]:
-    env = {**os.environ, **base_test_environment, "DATABASE_URL": migrated_database, "PORT": str(API_PORT)}
+def api_base_url(
+    migrated_database: str, base_test_environment: dict[str, str]
+) -> Generator[str, None, None]:
+    env = {
+        **os.environ,
+        **base_test_environment,
+        "DATABASE_URL": migrated_database,
+        "PORT": str(API_PORT),
+    }
     process = subprocess.Popen(
         [sys.executable, "-m", "bot.api"],
         env=env,
@@ -183,7 +197,9 @@ def _create_database(admin_url: str, name: str) -> None:
 def _drop_database(admin_url: str, name: str) -> None:
     with psycopg.connect(admin_url, autocommit=True) as conn:
         conn.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
+            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                sql.Identifier(name)
+            )
         )
 
 
