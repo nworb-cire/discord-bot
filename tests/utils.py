@@ -8,8 +8,25 @@ from typing import Any, Iterable, List
 import discord
 
 
+class DummyScalarResult:
+    def __init__(self, items: Iterable[Any]):
+        self._items = list(items)
+
+    def all(self) -> list[Any]:
+        return list(self._items)
+
+    def __iter__(self):
+        return iter(self._items)
+
+
 class DummyResult:
-    def __init__(self, *, scalar: Any = None, scalars: Iterable[Any] | None = None, rows: Iterable[Any] | None = None):
+    def __init__(
+        self,
+        *,
+        scalar: Any = None,
+        scalars: Iterable[Any] | None = None,
+        rows: Iterable[Any] | None = None,
+    ):
         self._scalar = scalar
         self._scalars = list(scalars or [])
         self._rows = list(rows or [])
@@ -18,14 +35,20 @@ class DummyResult:
         return self._scalar
 
     def scalars(self):
-        return SimpleNamespace(all=lambda: list(self._scalars))
+        return DummyScalarResult(self._scalars)
 
     def all(self):
         return list(self._rows)
 
 
 class DummySession:
-    def __init__(self, *, execute_results: List[Any] | None = None, get_results: dict[Any, Any] | None = None, commit_hook=None):
+    def __init__(
+        self,
+        *,
+        execute_results: List[Any] | None = None,
+        get_results: dict[Any, Any] | None = None,
+        commit_hook=None,
+    ):
         self.execute_results = list(execute_results or [])
         self.get_results = get_results or {}
         self.added = []
@@ -92,7 +115,9 @@ class DummyResponse:
         self.defer_kwargs = kwargs
 
     async def send_message(self, content=None, *, ephemeral=False, embed=None):
-        self.messages.append({"content": content, "ephemeral": ephemeral, "embed": embed})
+        self.messages.append(
+            {"content": content, "ephemeral": ephemeral, "embed": embed}
+        )
 
     async def send_modal(self, modal):
         self.modals.append(modal)
@@ -103,10 +128,15 @@ class DummyFollowup:
         self.messages = []
 
     async def send(self, content=None, *, ephemeral=False, embed=None):
-        self.messages.append({"content": content, "ephemeral": ephemeral, "embed": embed})
+        self.messages.append(
+            {"content": content, "ephemeral": ephemeral, "embed": embed}
+        )
+
 
 class DummyMessage:
-    def __init__(self, channel: DummyChannel | None, message_id: int, entry: dict[str, Any]):
+    def __init__(
+        self, channel: DummyChannel | None, message_id: int, entry: dict[str, Any]
+    ):
         self.channel = channel
         self.id = message_id
         self._entry = entry
@@ -142,8 +172,12 @@ class DummyInteraction(discord.Interaction):
         self.response = DummyResponse()
         self.followup = DummyFollowup()
         self.channel = DummyChannel(channel_id)
-        self.user = SimpleNamespace(id=user_id, mention=f"<@{user_id}>", roles=list(user_roles or []))
-        self.client = client or SimpleNamespace(get_channel=lambda _cid: DummyChannel(_cid))
+        self.user = SimpleNamespace(
+            id=user_id, mention=f"<@{user_id}>", roles=list(user_roles or [])
+        )
+        self.client = client or SimpleNamespace(
+            get_channel=lambda _cid: DummyChannel(_cid)
+        )
 
 
 def run_async(coro):

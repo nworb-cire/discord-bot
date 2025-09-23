@@ -137,7 +137,12 @@ async def test_open_voting_requires_ballot(monkeypatch):
 async def test_election_embed_posts_summary(monkeypatch):
     long_summary = "A" * 2000
     session = DummySession(
-        get_results={1: SimpleNamespace(title="Book", summary=long_summary)}
+        execute_results=[
+            DummyResult(scalars=[SimpleNamespace(book_id=1, message_id=99)]),
+            DummyResult(
+                scalars=[SimpleNamespace(id=1, title="Book", summary=long_summary)]
+            ),
+        ]
     )
     monkeypatch.setattr(
         "bot.commands.voting_session.async_session", lambda: session_cm(session)
@@ -147,13 +152,15 @@ async def test_election_embed_posts_summary(monkeypatch):
     interaction = DummyInteraction(
         client=SimpleNamespace(get_channel=lambda _cid: channel)
     )
+    interaction.guild_id = 123
     closes_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
     await vs._election_embed(interaction, [1], closes_at)
 
     embed_entry = channel.messages[0]["embed"]
     assert embed_entry.title == "Book Club Election"
-    assert embed_entry.fields[0]["name"].startswith("1.")
+    expected_link = f"https://discord.com/channels/123/{settings.nom_channel_id}/99"
+    assert embed_entry.fields[0]["name"] == f"1. [Book]({expected_link})"
     assert embed_entry.fields[0]["value"].endswith("...")
     assert interaction.followup.messages[0]["content"] == "Election opened."
 
@@ -246,13 +253,21 @@ async def test_ballot_preview_requires_no_open_election(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ballot_preview_sends_embed(monkeypatch):
-    books = {
-        1: SimpleNamespace(title="Book One", summary="Summary"),
-        2: SimpleNamespace(title="Book Two", summary="Details"),
-    }
     session = DummySession(
-        execute_results=[DummyResult()],
-        get_results={bid: book for bid, book in books.items()},
+        execute_results=[
+            DummyResult(
+                scalars=[
+                    SimpleNamespace(book_id=1, message_id=101),
+                    SimpleNamespace(book_id=2, message_id=202),
+                ]
+            ),
+            DummyResult(
+                scalars=[
+                    SimpleNamespace(id=1, title="Book One", summary="Summary"),
+                    SimpleNamespace(id=2, title="Book Two", summary="Details"),
+                ]
+            ),
+        ]
     )
     monkeypatch.setattr(
         "bot.commands.voting_session.async_session", lambda: session_cm(session)
@@ -265,12 +280,16 @@ async def test_ballot_preview_sends_embed(monkeypatch):
         vs, "get_top_noms", AsyncMock(return_value=[(1, 2, 1.0, 3.0), (2, 1, 0.5, 1.5)])
     )
     interaction = DummyInteraction()
+    interaction.guild_id = 123
 
     await vs.ballot_preview(interaction, limit=2)
 
     embed = interaction.followup.messages[0]["embed"]
     assert embed.title == "Upcoming Ballot Preview"
-    assert embed.fields[0]["name"].startswith("1.")
+    expected_preview_link = (
+        f"https://discord.com/channels/123/{settings.nom_channel_id}/101"
+    )
+    assert embed.fields[0]["name"] == f"1. [Book One]({expected_preview_link})"
     assert "Score" in embed.fields[0]["value"]
 
 

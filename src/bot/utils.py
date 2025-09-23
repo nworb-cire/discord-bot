@@ -9,10 +9,12 @@ import discord
 from loguru import logger
 from sqlalchemy import select
 
+from bot.config import get_settings
 from bot.db import Election
 
 
 NOMINATION_CANCEL_EMOJI = "❌"
+settings = get_settings()
 
 
 def utcnow() -> datetime:
@@ -38,6 +40,14 @@ def short_book_title(title: str) -> str:
     head, *_ = title.split(":", 1)
     shortened = head.strip() or title.strip()
     return capwords(shortened)
+
+
+def nomination_message_url(message_id: int, guild_id: Optional[int]) -> Optional[str]:
+    """Build a link to the original nomination message if guild context is available."""
+
+    if guild_id is None:
+        return None
+    return f"https://discord.com/channels/{guild_id}/{settings.nom_channel_id}/{message_id}"
 
 
 class UserFacingError(Exception):

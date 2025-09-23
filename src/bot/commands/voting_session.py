@@ -14,6 +14,7 @@ from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
     get_open_election,
     handle_interaction_errors,
+    nomination_message_url,
     utcnow,
 )
 
@@ -156,14 +157,41 @@ class VotingSession(commands.Cog):
             f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
         )
         async with async_session() as session:
+            nominations_result = await session.execute(
+                select(Nomination).where(Nomination.book_id.in_(ballot))
+            )
+            nominations_by_book = {
+                nomination.book_id: nomination
+                for nomination in nominations_result.scalars()
+            }
+            books_result = await session.execute(
+                select(Book).where(Book.id.in_(ballot))
+            )
+            books_by_id = {book.id: book for book in books_result.scalars()}
+            guild_id = getattr(interaction, "guild_id", None)
+            if guild_id is None:
+                guild = getattr(interaction, "guild", None)
+                guild_id = getattr(guild, "id", None) if guild is not None else None
             for idx, bid in enumerate(ballot, start=1):
-                book = await session.get(Book, bid)
+                book = books_by_id.get(bid)
+                if not book:
+                    continue
+                nomination = nominations_by_book.get(bid)
+                jump_url = (
+                    nomination_message_url(nomination.message_id, guild_id)
+                    if nomination
+                    else None
+                )
+                title = book.title
+                field_name = (
+                    f"{idx}. [{title}]({jump_url})"
+                    if jump_url is not None
+                    else f"{idx}. {title}"
+                )
                 summary = book.summary or "No summary available."
                 if len(summary) > 1024:
                     summary = summary[:1021] + "..."
-                embed.add_field(
-                    name=f"{idx}. {book.title}", value=summary, inline=False
-                )
+                embed.add_field(name=field_name, value=summary, inline=False)
         await interaction.client.get_channel(settings.bookclub_channel_id).send(
             embed=embed
         )
@@ -214,10 +242,40 @@ class VotingSession(commands.Cog):
                 )
                 return
             embed = discord.Embed(title="Upcoming Ballot Preview")
+            book_ids = [bid for bid, _, _, _ in ballot]
+            nominations_result = await session.execute(
+                select(Nomination).where(Nomination.book_id.in_(book_ids))
+            )
+            nominations_by_book = {
+                nomination.book_id: nomination
+                for nomination in nominations_result.scalars()
+            }
+            books_result = await session.execute(
+                select(Book).where(Book.id.in_(book_ids))
+            )
+            books_by_id = {book.id: book for book in books_result.scalars()}
+            guild_id = getattr(interaction, "guild_id", None)
+            if guild_id is None:
+                guild = getattr(interaction, "guild", None)
+                guild_id = getattr(guild, "id", None) if guild is not None else None
             for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
-                book = await session.get(Book, bid)
+                book = books_by_id.get(bid)
+                if not book:
+                    continue
+                nomination = nominations_by_book.get(bid)
+                jump_url = (
+                    nomination_message_url(nomination.message_id, guild_id)
+                    if nomination
+                    else None
+                )
+                title = book.title
+                field_name = (
+                    f"{idx}. [{title}]({jump_url})"
+                    if jump_url is not None
+                    else f"{idx}. {title}"
+                )
                 embed.add_field(
-                    name=f"{idx}. {book.title}",
+                    name=field_name,
                     value=f"Score: {score:.1f}\n"
                     f"Previous votes: {votes:.1f}\n"
                     f"Reactions: {reacts}",
