@@ -37,6 +37,7 @@ class NominationUpdatePayload(BaseModel):
 class OpenElectionPayload(BaseModel):
     opener_discord_id: int
     hours: int = 72
+    ballot_size: int = 5
 
 
 class VoteEntryPayload(BaseModel):
@@ -73,14 +74,17 @@ async def create_book(request: web.Request) -> web.Response:
         await session.commit()
         await session.refresh(book)
 
-    return web.json_response({
-        "id": book.id,
-        "title": book.title,
-        "description": book.description,
-        "summary": book.summary,
-        "isbn": book.isbn,
-        "length": book.length,
-    }, status=201)
+    return web.json_response(
+        {
+            "id": book.id,
+            "title": book.title,
+            "description": book.description,
+            "summary": book.summary,
+            "isbn": book.isbn,
+            "length": book.length,
+        },
+        status=201,
+    )
 
 
 async def get_book(request: web.Request) -> web.Response:
@@ -88,16 +92,21 @@ async def get_book(request: web.Request) -> web.Response:
     async with async_session() as session:
         book = await session.get(Book, book_id)
         if book is None:
-            raise web.HTTPNotFound(text=json.dumps({"detail": "book not found"}), content_type="application/json")
+            raise web.HTTPNotFound(
+                text=json.dumps({"detail": "book not found"}),
+                content_type="application/json",
+            )
 
-    return web.json_response({
-        "id": book.id,
-        "title": book.title,
-        "description": book.description,
-        "summary": book.summary,
-        "isbn": book.isbn,
-        "length": book.length,
-    })
+    return web.json_response(
+        {
+            "id": book.id,
+            "title": book.title,
+            "description": book.description,
+            "summary": book.summary,
+            "isbn": book.isbn,
+            "length": book.length,
+        }
+    )
 
 
 async def create_nomination(request: web.Request) -> web.Response:
@@ -108,13 +117,18 @@ async def create_nomination(request: web.Request) -> web.Response:
         )
         if open_election.scalar_one_or_none() is not None:
             raise web.HTTPConflict(
-                text=json.dumps({"detail": "Nominations are closed while an election is active."}),
+                text=json.dumps(
+                    {"detail": "Nominations are closed while an election is active."}
+                ),
                 content_type="application/json",
             )
 
         book = await session.get(Book, payload.book_id)
         if book is None:
-            raise web.HTTPNotFound(text=json.dumps({"detail": "book not found"}), content_type="application/json")
+            raise web.HTTPNotFound(
+                text=json.dumps({"detail": "book not found"}),
+                content_type="application/json",
+            )
 
         nomination = Nomination(
             book_id=payload.book_id,
@@ -126,13 +140,16 @@ async def create_nomination(request: web.Request) -> web.Response:
         await session.commit()
         await session.refresh(nomination)
 
-    return web.json_response({
-        "id": nomination.id,
-        "book_id": nomination.book_id,
-        "nominator_discord_id": nomination.nominator_discord_id,
-        "message_id": nomination.message_id,
-        "reactions": int(nomination.reactions),
-    }, status=201)
+    return web.json_response(
+        {
+            "id": nomination.id,
+            "book_id": nomination.book_id,
+            "nominator_discord_id": nomination.nominator_discord_id,
+            "message_id": nomination.message_id,
+            "reactions": int(nomination.reactions),
+        },
+        status=201,
+    )
 
 
 async def update_nomination(request: web.Request) -> web.Response:
@@ -175,7 +192,7 @@ async def open_election(request: web.Request) -> web.Response:
                 content_type="application/json",
             )
 
-        ballot_rows = await _calculate_ballot(session, limit=settings.ballot_size)
+        ballot_rows = await _calculate_ballot(session, limit=payload.ballot_size)
         if not ballot_rows:
             raise web.HTTPBadRequest(
                 text=json.dumps({"detail": "No nominations available for voting."}),
@@ -225,15 +242,23 @@ async def cast_vote(request: web.Request) -> web.Response:
         for entry in payload.entries:
             if entry.book_id not in ballot_book_ids:
                 raise web.HTTPBadRequest(
-                    text=json.dumps({"detail": "Vote must reference books on the ballot."}),
+                    text=json.dumps(
+                        {"detail": "Vote must reference books on the ballot."}
+                    ),
                     content_type="application/json",
                 )
 
-        max_score = settings.weight_inner if payload.is_bookclub_member else settings.weight_outer
-        total = sum(entry.weight ** 2 for entry in payload.entries)
+        max_score = (
+            settings.weight_inner
+            if payload.is_bookclub_member
+            else settings.weight_outer
+        )
+        total = sum(entry.weight**2 for entry in payload.entries)
         if total > max_score:
             raise web.HTTPBadRequest(
-                text=json.dumps({"detail": "Total vote weight exceeds the allowed maximum."}),
+                text=json.dumps(
+                    {"detail": "Total vote weight exceeds the allowed maximum."}
+                ),
                 content_type="application/json",
             )
 
@@ -247,7 +272,11 @@ async def cast_vote(request: web.Request) -> web.Response:
                     weight=entry.weight,
                 )
                 .on_conflict_do_update(
-                    index_elements=[Vote.election_id, Vote.voter_discord_id, Vote.book_id],
+                    index_elements=[
+                        Vote.election_id,
+                        Vote.voter_discord_id,
+                        Vote.book_id,
+                    ],
                     set_={"weight": entry.weight},
                 )
             )
@@ -282,7 +311,9 @@ async def close_election(request: web.Request) -> web.Response:
             .where(Vote.election_id == election.id)
             .group_by(Vote.book_id)
         )
-        totals_map = {int(row.book_id): float(row.total_votes or 0.0) for row in vote_totals}
+        totals_map = {
+            int(row.book_id): float(row.total_votes or 0.0) for row in vote_totals
+        }
 
         results: list[dict[str, object]] = []
         for book_id in election.ballot or []:
@@ -368,12 +399,16 @@ async def _parse_request(request: web.Request, model: type[BaseModel]) -> BaseMo
     try:
         data = await request.json()
     except Exception as exc:  # pragma: no cover - aiohttp normalises JSON errors
-        raise web.HTTPBadRequest(text=json.dumps({"detail": "invalid JSON"}), content_type="application/json") from exc
+        raise web.HTTPBadRequest(
+            text=json.dumps({"detail": "invalid JSON"}), content_type="application/json"
+        ) from exc
 
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        raise web.HTTPBadRequest(text=exc.json(), content_type="application/json") from exc
+        raise web.HTTPBadRequest(
+            text=exc.json(), content_type="application/json"
+        ) from exc
 
 
 def create_app() -> web.Application:

@@ -80,6 +80,7 @@ if "discord" not in sys.modules:
     discord_module.Embed = _Embed
     discord_module.Client = _Client
     discord_module.Intents = _Intents
+
     class _Interaction:
         pass
 
@@ -89,6 +90,7 @@ if "discord" not in sys.modules:
         pass
 
     discord_module.RawReactionActionEvent = _RawReactionActionEvent
+
     class _Permissions:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -98,6 +100,7 @@ if "discord" not in sys.modules:
     app_commands_module = types.ModuleType("discord.app_commands")
     app_commands_module.command = _decorator
     app_commands_module.default_permissions = _decorator
+    app_commands_module.describe = _decorator
     discord_module.app_commands = app_commands_module
 
     ext_module = types.ModuleType("discord.ext")
@@ -203,6 +206,7 @@ except ModuleNotFoundError:
     sa_asyncio = None
 
 if sa_asyncio is not None:
+
     class _DummyEngine:
         pass
 
@@ -226,7 +230,9 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "e2e: end-to-end tests requiring explicit opt-in")
+    config.addinivalue_line(
+        "markers", "e2e: end-to-end tests requiring explicit opt-in"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

@@ -8,14 +8,26 @@ from bot.commands.voting_session import VotingSession
 from bot.config import get_settings
 from bot.db import Election
 from bot.utils import NOMINATION_CANCEL_EMOJI
-from tests.utils import DummyChannel, DummyInteraction, DummyResult, DummySession, session_cm
+from tests.utils import (
+    DummyChannel,
+    DummyInteraction,
+    DummyResult,
+    DummySession,
+    session_cm,
+)
 
 settings = get_settings()
 
 
 @pytest.mark.asyncio
 async def test_get_top_noms_returns_scores(monkeypatch):
-    session = DummySession(execute_results=[DummyResult(rows=[SimpleNamespace(book_id=1, reactions=2, vote_sum=1.5, score=3.5)])])
+    session = DummySession(
+        execute_results=[
+            DummyResult(
+                rows=[SimpleNamespace(book_id=1, reactions=2, vote_sum=1.5, score=3.5)]
+            )
+        ]
+    )
     vs = VotingSession(bot=SimpleNamespace())
     monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
 
@@ -29,8 +41,13 @@ async def test_open_voting_aborts_if_open(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=SimpleNamespace()))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=SimpleNamespace()),
+    )
 
     await vs.open_voting(interaction)
 
@@ -44,9 +61,15 @@ async def test_open_voting_creates_election(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=None))
-    monkeypatch.setattr(vs, "get_top_noms", AsyncMock(return_value=[(1, 0, 0.0, 0.0), (2, 1, 2.0, 3.0)]))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        vs, "get_top_noms", AsyncMock(return_value=[(1, 0, 0.0, 0.0), (2, 1, 2.0, 3.0)])
+    )
     fake_embed = AsyncMock()
     monkeypatch.setattr(vs, "_election_embed", fake_embed)
     fixed_now = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -55,6 +78,7 @@ async def test_open_voting_creates_election(monkeypatch):
     await vs.open_voting(interaction, hours=4)
 
     assert interaction.response.deferred is True
+    vs.get_top_noms.assert_awaited_once_with(session, limit=5)
     election = next(obj for obj in session.added if isinstance(obj, Election))
     assert election.ballot == [1, 2]
     assert election.closes_at == fixed_now + timedelta(hours=4)
@@ -63,29 +87,66 @@ async def test_open_voting_creates_election(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_open_voting_accepts_custom_ballot_size(monkeypatch):
+    interaction = DummyInteraction()
+    session = DummySession()
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
+    ballot_mock = AsyncMock(return_value=[(1, 0, 0.0, 0.0)])
+    monkeypatch.setattr(vs, "get_top_noms", ballot_mock)
+    monkeypatch.setattr(vs, "_election_embed", AsyncMock())
+    monkeypatch.setattr(
+        "bot.commands.voting_session.utcnow",
+        lambda: datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+
+    await vs.open_voting(interaction, ballot_size=2)
+
+    ballot_mock.assert_awaited_once_with(session, limit=2)
+
+
+@pytest.mark.asyncio
 async def test_open_voting_requires_ballot(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
     monkeypatch.setattr(vs, "get_top_noms", AsyncMock(return_value=[]))
 
     await vs.open_voting(interaction)
 
     assert interaction.response.deferred is True
-    assert interaction.followup.messages[0]["content"] == "No nominations available for voting."
+    assert (
+        interaction.followup.messages[0]["content"]
+        == "No nominations available for voting."
+    )
     assert session.commit_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_election_embed_posts_summary(monkeypatch):
     long_summary = "A" * 2000
-    session = DummySession(get_results={1: SimpleNamespace(title="Book", summary=long_summary)})
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
+    session = DummySession(
+        get_results={1: SimpleNamespace(title="Book", summary=long_summary)}
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
     vs = VotingSession(bot=SimpleNamespace())
     channel = DummyChannel(2)
-    interaction = DummyInteraction(client=SimpleNamespace(get_channel=lambda _cid: channel))
+    interaction = DummyInteraction(
+        client=SimpleNamespace(get_channel=lambda _cid: channel)
+    )
     closes_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
     await vs._election_embed(interaction, [1], closes_at)
@@ -102,8 +163,12 @@ async def test_close_voting_handles_missing(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
 
     await vs.close_voting(interaction)
 
@@ -116,13 +181,24 @@ async def test_close_voting_announces_result(monkeypatch):
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
     election = SimpleNamespace()
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=election))
-    monkeypatch.setattr("bot.commands.voting_session.close_and_tally", AsyncMock(return_value=SimpleNamespace()))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=election),
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.close_and_tally",
+        AsyncMock(return_value=SimpleNamespace()),
+    )
 
     await vs.close_voting(interaction)
 
-    assert interaction.response.messages[0]["content"] == "Election closed and results announced."
+    assert (
+        interaction.response.messages[0]["content"]
+        == "Election closed and results announced."
+    )
 
 
 @pytest.mark.asyncio
@@ -131,9 +207,16 @@ async def test_close_voting_handles_no_votes(monkeypatch):
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
     election = SimpleNamespace()
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=election))
-    monkeypatch.setattr("bot.commands.voting_session.close_and_tally", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=election),
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.close_and_tally", AsyncMock(return_value=None)
+    )
 
     await vs.close_voting(interaction)
 
@@ -145,12 +228,20 @@ async def test_ballot_preview_requires_no_open_election(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=SimpleNamespace()))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=SimpleNamespace()),
+    )
 
     await vs.ballot_preview(interaction)
 
-    assert interaction.followup.messages[0]["content"] == "An election is currently open. Cannot preview ballot."
+    assert (
+        interaction.followup.messages[0]["content"]
+        == "An election is currently open. Cannot preview ballot."
+    )
 
 
 @pytest.mark.asyncio
@@ -163,10 +254,16 @@ async def test_ballot_preview_sends_embed(monkeypatch):
         execute_results=[DummyResult()],
         get_results={bid: book for bid, book in books.items()},
     )
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr(vs, "get_top_noms", AsyncMock(return_value=[(1, 2, 1.0, 3.0), (2, 1, 0.5, 1.5)]))
+    monkeypatch.setattr(
+        vs, "get_top_noms", AsyncMock(return_value=[(1, 2, 1.0, 3.0), (2, 1, 0.5, 1.5)])
+    )
     interaction = DummyInteraction()
 
     await vs.ballot_preview(interaction, limit=2)
@@ -189,6 +286,7 @@ async def test_get_reacts_for_nomination_counts_unique(monkeypatch):
             async def generator():
                 for uid in self.ids:
                     yield SimpleNamespace(id=uid)
+
             return generator()
 
     class DummyReaction:
@@ -238,12 +336,19 @@ async def test_update_all_nominations_refreshes_data(monkeypatch):
 @pytest.mark.asyncio
 async def test_ballot_preview_handles_empty_ballot(monkeypatch):
     session = DummySession(execute_results=[DummyResult()])
-    monkeypatch.setattr("bot.commands.voting_session.async_session", lambda: session_cm(session))
-    monkeypatch.setattr("bot.commands.voting_session.get_open_election", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
     vs = VotingSession(bot=SimpleNamespace())
     monkeypatch.setattr(vs, "get_top_noms", AsyncMock(return_value=[]))
     interaction = DummyInteraction()
 
     await vs.ballot_preview(interaction)
 
-    assert interaction.followup.messages[0]["content"] == "No nominations available for voting."
+    assert (
+        interaction.followup.messages[0]["content"]
+        == "No nominations available for voting."
+    )

@@ -59,27 +59,30 @@ class VotingSession(commands.Cog):
         await asyncio.gather(*(update_nom(n) for n in nominations))
         await session.commit()
 
-    async def get_top_noms(self, session, limit: int = 0) -> list[tuple[int, int, float, float]]:
+    async def get_top_noms(
+        self, session, limit: int = 0
+    ) -> list[tuple[int, int, float, float]]:
         await self.update_all_nominations(session)
         sub_votes = (
-            select(
-                Vote.book_id,
-                func.sum(Vote.weight).label("vote_sum")
-            )
+            select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
             .group_by(Vote.book_id)
             .subquery()
         )
         nominations_table = Nomination.__table__
-        winner_subq = select(Election.winner).where(Election.winner.is_not(None)).scalar_subquery()
+        winner_subq = (
+            select(Election.winner)
+            .where(Election.winner.is_not(None))
+            .scalar_subquery()
+        )
         stmt = (
             select(
                 Book.id.label("book_id"),
                 func.coalesce(nominations_table.c.reactions, 0).label("reactions"),
                 func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
                 (
-                    func.coalesce(nominations_table.c.reactions, 0) +
-                    func.coalesce(sub_votes.c.vote_sum, 0)
-                ).label("score")
+                    func.coalesce(nominations_table.c.reactions, 0)
+                    + func.coalesce(sub_votes.c.vote_sum, 0)
+                ).label("score"),
             )
             .select_from(Book)
             .outerjoin(nominations_table, nominations_table.c.book_id == Book.id)
@@ -95,7 +98,7 @@ class VotingSession(commands.Cog):
                 int(row.book_id),
                 int(row.reactions),
                 float(row.vote_sum) if row.vote_sum is not None else 0.0,
-                float(row.score) if row.score is not None else 0.0
+                float(row.score) if row.score is not None else 0.0,
             )
             for row in result.all()
         ]
@@ -106,18 +109,31 @@ class VotingSession(commands.Cog):
     )
     @app_commands.default_permissions(Permissions(manage_roles=True))
     @handle_interaction_errors()
-    async def open_voting(self, interaction: discord.Interaction, hours: int = 72):
+    @app_commands.describe(
+        hours="Number of hours the election should remain open",
+        ballot_size="How many nominations to include in the ballot",
+    )
+    async def open_voting(
+        self,
+        interaction: discord.Interaction,
+        hours: int = 72,
+        ballot_size: int = 5,
+    ):
         await interaction.response.defer(ephemeral=True)
         now = utcnow()
         async with async_session() as session:
             if await get_open_election(session):
-                await interaction.followup.send("An election is already open.", ephemeral=True)
+                await interaction.followup.send(
+                    "An election is already open.", ephemeral=True
+                )
                 return
 
-            ballot = await self.get_top_noms(session, limit=settings.ballot_size)
+            ballot = await self.get_top_noms(session, limit=ballot_size)
             ballot_ids = [bid for bid, _, _, _ in ballot]
             if not ballot:
-                await interaction.followup.send("No nominations available for voting.", ephemeral=True)
+                await interaction.followup.send(
+                    "No nominations available for voting.", ephemeral=True
+                )
                 return
             closes_at = now + timedelta(hours=hours)
             election = Election(
@@ -130,12 +146,14 @@ class VotingSession(commands.Cog):
             await session.commit()
         await self._election_embed(interaction, ballot_ids, closes_at)
 
-    async def _election_embed(self, interaction: discord.Interaction, ballot: list[int], closes_at: datetime):
+    async def _election_embed(
+        self, interaction: discord.Interaction, ballot: list[int], closes_at: datetime
+    ):
         closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
             title="Book Club Election",
             description=f"Vote with `/vote`! "
-                        f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
+            f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
         )
         async with async_session() as session:
             for idx, bid in enumerate(ballot, start=1):
@@ -143,8 +161,12 @@ class VotingSession(commands.Cog):
                 summary = book.summary or "No summary available."
                 if len(summary) > 1024:
                     summary = summary[:1021] + "..."
-                embed.add_field(name=f"{idx}. {book.title}", value=summary, inline=False)
-        await interaction.client.get_channel(settings.bookclub_channel_id).send(embed=embed)
+                embed.add_field(
+                    name=f"{idx}. {book.title}", value=summary, inline=False
+                )
+        await interaction.client.get_channel(settings.bookclub_channel_id).send(
+            embed=embed
+        )
         await interaction.followup.send("Election opened.", ephemeral=True)
 
     @app_commands.command(
@@ -157,11 +179,17 @@ class VotingSession(commands.Cog):
         async with async_session() as session:
             election = await get_open_election(session)
             if not election:
-                await interaction.response.send_message("No open election found.", ephemeral=True)
+                await interaction.response.send_message(
+                    "No open election found.", ephemeral=True
+                )
                 return
-            winner = await close_and_tally(self.bot, session, election, closed_by=interaction.user.id)
+            winner = await close_and_tally(
+                self.bot, session, election, closed_by=interaction.user.id
+            )
         if winner:
-            await interaction.response.send_message("Election closed and results announced.", ephemeral=True)
+            await interaction.response.send_message(
+                "Election closed and results announced.", ephemeral=True
+            )
         else:
             await interaction.response.send_message("No votes were cast.")
 
@@ -170,15 +198,20 @@ class VotingSession(commands.Cog):
         description="Preview the current ballot for the next election",
     )
     @handle_interaction_errors()
-    async def ballot_preview(self, interaction: discord.Interaction, limit: int = settings.ballot_size):
+    async def ballot_preview(self, interaction: discord.Interaction, limit: int = 5):
         await interaction.response.defer(ephemeral=True)
         async with async_session() as session:
             if await get_open_election(session):
-                await interaction.followup.send("An election is currently open. Cannot preview ballot.", ephemeral=True)
+                await interaction.followup.send(
+                    "An election is currently open. Cannot preview ballot.",
+                    ephemeral=True,
+                )
                 return
             ballot = await self.get_top_noms(session, limit=limit)
             if not ballot:
-                await interaction.followup.send("No nominations available for voting.", ephemeral=True)
+                await interaction.followup.send(
+                    "No nominations available for voting.", ephemeral=True
+                )
                 return
             embed = discord.Embed(title="Upcoming Ballot Preview")
             for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
@@ -186,8 +219,8 @@ class VotingSession(commands.Cog):
                 embed.add_field(
                     name=f"{idx}. {book.title}",
                     value=f"Score: {score:.1f}\n"
-                          f"Previous votes: {votes:.1f}\n"
-                          f"Reactions: {reacts}",
+                    f"Previous votes: {votes:.1f}\n"
+                    f"Reactions: {reacts}",
                     inline=False,
                 )
         await interaction.followup.send(embed=embed, ephemeral=True)
