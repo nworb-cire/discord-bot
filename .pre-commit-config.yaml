@@ -2,9 +2,13 @@ repos:
   - repo: local
     hooks:
       - id: unit-tests
-        name: Run unit tests
+        name: Run unit tests with coverage gate
         entry: bash
-        args: [-c, 'UV_CACHE_DIR=.uv-cache uv run pytest tests']
+        args:
+          - -c
+          - >-
+            UV_CACHE_DIR=.uv-cache uv run coverage run -m pytest tests &&
+            UV_CACHE_DIR=.uv-cache uv run coverage report --fail-under=95
         language: system
         pass_filenames: false
         always_run: true
