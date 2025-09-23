@@ -37,3 +37,8 @@ dev = [
     "psycopg[binary]>=3.2",
     "testcontainers[postgres]>=4.8",
 ]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:.*@wait_container_is_ready decorator is deprecated.*:DeprecationWarning",
+]

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import uuid
+import warnings
 from collections.abc import Generator
 from contextlib import suppress
 from urllib.parse import quote_plus
@@ -15,6 +16,13 @@ import pytest
 import requests
 from docker.errors import DockerException
 from testcontainers.postgres import PostgresContainer
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*@wait_container_is_ready decorator is deprecated.*",
+    category=DeprecationWarning,
+    module=r"testcontainers\..*",
+)
 
 POSTGRES_IMAGE = os.environ.get("TESTCONTAINERS_POSTGRES_IMAGE", "postgres:16-alpine")
 API_PORT = int(os.environ.get("E2E_TEST_API_PORT", "8081"))

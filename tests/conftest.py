@@ -2,6 +2,7 @@
 import os
 import sys
 import types
+import warnings
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,13 @@ if SRC.as_posix() not in sys.path:
     sys.path.insert(0, SRC.as_posix())
 
 # Ensure required environment variables are present for Settings()
+warnings.filterwarnings(
+    "ignore",
+    message=r".*@wait_container_is_ready decorator is deprecated.*",
+    category=DeprecationWarning,
+    module=r"testcontainers\..*",
+)
+
 _DEFAULT_ENV = {
     "DISCORD_BOT_TOKEN": "test-token",
     "BOOKCLUB_CHANNEL_ID": "1",
