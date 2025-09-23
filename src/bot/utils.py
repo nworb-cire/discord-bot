@@ -2,6 +2,7 @@ import asyncio
 from contextlib import suppress
 from datetime import datetime, timezone
 from functools import wraps
+from string import capwords
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import discord
@@ -22,11 +23,21 @@ def utcnow() -> datetime:
 
 
 async def get_open_election(session):
-    return (await session.execute(
-        select(Election)
-        .where(Election.closed_at.is_(None))
-        .order_by(Election.opened_at.desc())
-    )).scalar_one_or_none()
+    return (
+        await session.execute(
+            select(Election)
+            .where(Election.closed_at.is_(None))
+            .order_by(Election.opened_at.desc())
+        )
+    ).scalar_one_or_none()
+
+
+def short_book_title(title: str) -> str:
+    """Return a colon-truncated, capitalized version of a book title."""
+
+    head, *_ = title.split(":", 1)
+    shortened = head.strip() or title.strip()
+    return capwords(shortened)
 
 
 class UserFacingError(Exception):
@@ -42,7 +53,9 @@ InteractionFn = Callable[..., Awaitable[Any]]
 TFunc = TypeVar("TFunc", bound=InteractionFn)
 
 
-def handle_interaction_errors(default_message: str = "Something went wrong. Please try again.") -> Callable[[TFunc], TFunc]:
+def handle_interaction_errors(
+    default_message: str = "Something went wrong. Please try again.",
+) -> Callable[[TFunc], TFunc]:
     """Decorator to ensure interactions always respond, even when errors occur."""
 
     def decorator(func: TFunc) -> TFunc:
@@ -55,10 +68,16 @@ def handle_interaction_errors(default_message: str = "Something went wrong. Plea
             try:
                 return await func(*args, **kwargs)
             except asyncio.TimeoutError as exc:
-                logger.warning("Interaction timed out in {}: {}", func.__qualname__, exc)
-                await _send_interaction_error(interaction, "Request timed out. Please try again.")
+                logger.warning(
+                    "Interaction timed out in {}: {}", func.__qualname__, exc
+                )
+                await _send_interaction_error(
+                    interaction, "Request timed out. Please try again."
+                )
             except UserFacingError as exc:
-                await _send_interaction_error(interaction, exc.message, ephemeral=exc.ephemeral)
+                await _send_interaction_error(
+                    interaction, exc.message, ephemeral=exc.ephemeral
+                )
             except Exception:
                 logger.exception("Unhandled error in {}", func.__qualname__)
                 await _send_interaction_error(interaction, default_message)
@@ -68,7 +87,9 @@ def handle_interaction_errors(default_message: str = "Something went wrong. Plea
     return decorator
 
 
-def _extract_interaction(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Optional[discord.Interaction]:
+def _extract_interaction(
+    args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> Optional[discord.Interaction]:
     for value in kwargs.values():
         if isinstance(value, discord.Interaction):
             return value
@@ -78,7 +99,9 @@ def _extract_interaction(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Optio
     return None
 
 
-async def _send_interaction_error(interaction: discord.Interaction, message: str, *, ephemeral: bool = True) -> None:
+async def _send_interaction_error(
+    interaction: discord.Interaction, message: str, *, ephemeral: bool = True
+) -> None:
     response = interaction.response
     responded = _interaction_already_handled(response)
     send = interaction.followup.send if responded else response.send_message

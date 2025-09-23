@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Election, Vote
-from bot.utils import get_open_election, handle_interaction_errors
+from bot.utils import get_open_election, handle_interaction_errors, short_book_title
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -23,7 +23,7 @@ class BallotModal(discord.ui.Modal, title="Vote"):
         for nom in noms:
             self.add_item(
                 discord.ui.TextInput(
-                    label=nom.title[:45],
+                    label=short_book_title(nom.title)[:45],
                     required=False,
                     placeholder="0-10",
                     default="0",
