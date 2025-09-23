@@ -16,6 +16,7 @@ from bot.utils import (
     handle_interaction_errors,
     nomination_message_url,
     utcnow,
+    short_book_title,
 )
 
 settings = get_settings()
@@ -182,9 +183,9 @@ class VotingSession(commands.Cog):
                     if nomination
                     else None
                 )
-                title = book.title
+                title = short_book_title(book.title)
                 field_name = (
-                    f"{idx}. [{title}]({jump_url})"
+                    f"{idx}. {title} {jump_url}"
                     if jump_url is not None
                     else f"{idx}. {title}"
                 )
@@ -268,9 +269,9 @@ class VotingSession(commands.Cog):
                     if nomination
                     else None
                 )
-                title = book.title
+                title = short_book_title(book.title)
                 field_name = (
-                    f"{idx}. [{title}]({jump_url})"
+                    f"{idx}. {title} {jump_url}"
                     if jump_url is not None
                     else f"{idx}. {title}"
                 )

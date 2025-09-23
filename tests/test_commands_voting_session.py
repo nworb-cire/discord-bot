@@ -160,7 +160,7 @@ async def test_election_embed_posts_summary(monkeypatch):
     embed_entry = channel.messages[0]["embed"]
     assert embed_entry.title == "Book Club Election"
     expected_link = f"https://discord.com/channels/123/{settings.nom_channel_id}/99"
-    assert embed_entry.fields[0]["name"] == f"1. [Book]({expected_link})"
+    assert embed_entry.fields[0]["name"] == f"1. Book {expected_link}"
     assert embed_entry.fields[0]["value"].endswith("...")
     assert interaction.followup.messages[0]["content"] == "Election opened."
 
@@ -289,7 +289,7 @@ async def test_ballot_preview_sends_embed(monkeypatch):
     expected_preview_link = (
         f"https://discord.com/channels/123/{settings.nom_channel_id}/101"
     )
-    assert embed.fields[0]["name"] == f"1. [Book One]({expected_preview_link})"
+    assert embed.fields[0]["name"] == f"1. Book One {expected_preview_link}"
     assert "Score" in embed.fields[0]["value"]
 
 
