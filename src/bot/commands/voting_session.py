@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 import discord
 from discord import app_commands, Permissions
 from discord.ext import commands
+from loguru import logger
 from sqlalchemy import select, func, literal_column
 
 from bot.config import get_settings
@@ -28,7 +29,15 @@ class VotingSession(commands.Cog):
         channel = self.bot.get_channel(settings.nom_channel_id)
         if not channel:
             channel = await self.bot.fetch_channel(settings.nom_channel_id)
-        message = await channel.fetch_message(nomination.message_id)
+        try:
+            message = await channel.fetch_message(nomination.message_id)
+        except discord.NotFound:
+            logger.warning(
+                "Nomination message {} for book {} no longer exists; defaulting reactions to 0",
+                nomination.message_id,
+                nomination.book_id,
+            )
+            return 0
 
         unique_users = set()
         for reaction in message.reactions:
