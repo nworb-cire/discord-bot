@@ -9,7 +9,7 @@ from sqlalchemy import select, func, literal_column
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
 from bot.election import close_and_tally
-from bot.utils import utcnow, get_open_election
+from bot.utils import get_open_election, handle_interaction_errors, utcnow
 
 settings = get_settings()
 
@@ -88,6 +88,7 @@ class VotingSession(commands.Cog):
         description="Open an election for book club",
     )
     @app_commands.default_permissions(Permissions(manage_roles=True))
+    @handle_interaction_errors()
     async def open_voting(self, interaction: discord.Interaction, hours: int = 72):
         await interaction.response.defer(ephemeral=True)
         now = utcnow()
@@ -134,6 +135,7 @@ class VotingSession(commands.Cog):
         description="Close the current election and announce results",
     )
     @app_commands.default_permissions(Permissions(manage_roles=True))
+    @handle_interaction_errors()
     async def close_voting(self, interaction: discord.Interaction):
         async with async_session() as session:
             election = await get_open_election(session)
@@ -150,6 +152,7 @@ class VotingSession(commands.Cog):
         name="ballot_preview",
         description="Preview the current ballot for the next election",
     )
+    @handle_interaction_errors()
     async def ballot_preview(self, interaction: discord.Interaction, limit: int = settings.ballot_size):
         await interaction.response.defer(ephemeral=True)
         async with async_session() as session:

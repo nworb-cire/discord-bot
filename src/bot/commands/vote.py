@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Election, Vote
-from bot.utils import get_open_election
+from bot.utils import get_open_election, handle_interaction_errors
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -84,6 +84,7 @@ class Ballot(commands.Cog):
         self.bot = bot
 
     @discord.app_commands.command(name="vote", description="Vote for your favorite nominations.")
+    @handle_interaction_errors()
     async def vote(self, interaction: discord.Interaction):
         async with async_session() as session:
             result = await session.execute(select(Election).where(Election.closed_at.is_(None)))

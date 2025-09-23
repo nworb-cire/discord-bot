@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Nomination
-from bot.utils import utcnow
+from bot.utils import handle_interaction_errors, utcnow
 
 settings = get_settings()
 ASIN_RE = re.compile(r"/([A-Z0-9]{10})(?:[/?]|$)")
@@ -26,6 +26,7 @@ class Nominate(commands.Cog):
         name="nominate",
         description="Nominate a book by its ISBN",
     )
+    @handle_interaction_errors()
     async def nominate(self, interaction: discord.Interaction, isbn: str):
         await interaction.response.defer(ephemeral=True)
         isbn = re.sub(r"[^\dX]", "", isbn)
