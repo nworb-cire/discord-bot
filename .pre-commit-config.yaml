@@ -1,6 +1,32 @@
 repos:
   - repo: local
     hooks:
+      - id: black
+        name: Black (uv)
+        entry: uv
+        args:
+          - run
+          - --no-sync
+          - black
+          - --config
+          - pyproject.toml
+        language: system
+        types: [python]
+
+      - id: ruff
+        name: Ruff (uv)
+        entry: uv
+        args:
+          - run
+          - --no-sync
+          - ruff
+          - check
+          - --fix
+        language: system
+        types: [python]
+
+  - repo: local
+    hooks:
       - id: unit-tests
         name: Run unit tests with coverage gate
         entry: bash
