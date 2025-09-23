@@ -13,6 +13,7 @@ from bot.utils import get_open_election, handle_interaction_errors
 log = logging.getLogger(__name__)
 settings = get_settings()
 
+
 class BallotModal(discord.ui.Modal, title="Vote"):
     def __init__(self, noms: list[Book], is_bookclub: bool = False):
         super().__init__()
@@ -39,17 +40,25 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 raise Exception(
                     f"Total score exceeds maximum allowed ({max_score}). "
                     f"Quadratic scoring is used, so scores are squared before summing. "
-                    f"i.e., if you cast 3, 3, and 2, the total is 3^2 + 3^2 + 2^2 = 22."
+                    f"i.e., if you cast 3, 3, and 2, the total is 3²+3²+2²=22."
                 )
             for book_id, score in entries.items():
-                stmt = insert(Vote).values(
-                    election_id=election.id,
-                    voter_discord_id=user_id,
-                    book_id=book_id,
-                    weight=score,
-                ).on_conflict_do_update(
-                    index_elements=[Vote.election_id, Vote.voter_discord_id, Vote.book_id],
-                    set_={'weight': score},
+                stmt = (
+                    insert(Vote)
+                    .values(
+                        election_id=election.id,
+                        voter_discord_id=user_id,
+                        book_id=book_id,
+                        weight=score,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=[
+                            Vote.election_id,
+                            Vote.voter_discord_id,
+                            Vote.book_id,
+                        ],
+                        set_={"weight": score},
+                    )
                 )
                 await session.execute(stmt)
 
@@ -60,14 +69,22 @@ class BallotModal(discord.ui.Modal, title="Vote"):
         for comp, nom in zip(self.children, self.noms):
             txt = comp.value.strip() or "0"
             if not re.fullmatch(r"-?\d+(\.\d+)?", txt):
-                log.info("vote_failed", extra={"user": str(inter.user), "reason": "non-numeric input"})
+                log.info(
+                    "vote_failed",
+                    extra={"user": str(inter.user), "reason": "non-numeric input"},
+                )
                 await inter.response.send_message("Numbers only.", ephemeral=True)
                 return
             try:
                 entries[nom.id] = float(txt)
             except ValueError:
-                log.info("vote_failed", extra={"user": str(inter.user), "reason": "invalid float"})
-                await inter.response.send_message("Invalid number format.", ephemeral=True)
+                log.info(
+                    "vote_failed",
+                    extra={"user": str(inter.user), "reason": "invalid float"},
+                )
+                await inter.response.send_message(
+                    "Invalid number format.", ephemeral=True
+                )
                 return
         try:
             await self.record_votes(inter.user.id, entries)
@@ -83,25 +100,34 @@ class Ballot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @discord.app_commands.command(name="vote", description="Vote for your favorite nominations.")
+    @discord.app_commands.command(
+        name="vote", description="Vote for your favorite nominations."
+    )
     @handle_interaction_errors()
     async def vote(self, interaction: discord.Interaction):
         async with async_session() as session:
-            result = await session.execute(select(Election).where(Election.closed_at.is_(None)))
+            result = await session.execute(
+                select(Election).where(Election.closed_at.is_(None))
+            )
             election = result.scalar_one_or_none()
             if not election:
-                await interaction.response.send_message("Voting not open.", ephemeral=True)
+                await interaction.response.send_message(
+                    "Voting not open.", ephemeral=True
+                )
                 return
             books_result = await session.execute(
-                select(Book)
-                .where(Book.id.in_(election.ballot))
+                select(Book).where(Book.id.in_(election.ballot))
             )
             books = books_result.scalars().all()
         if len(books) == 0:
-            await interaction.response.send_message("No nominations available for voting.", ephemeral=True)
+            await interaction.response.send_message(
+                "No nominations available for voting.", ephemeral=True
+            )
             return
         # sort books to be in same order as ballot
         books.sort(key=lambda b: election.ballot.index(b.id))
         user_roles = [r.id for r in interaction.user.roles]
-        is_bookclub = settings.role_highweight_id  in user_roles
-        await interaction.response.send_modal(BallotModal(books, is_bookclub=is_bookclub))
+        is_bookclub = settings.role_highweight_id in user_roles
+        await interaction.response.send_modal(
+            BallotModal(books, is_bookclub=is_bookclub)
+        )
