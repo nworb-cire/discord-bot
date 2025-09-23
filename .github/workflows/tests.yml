@@ -1,0 +1,58 @@
+name: tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      TESTCONTAINERS_RYUK_DISABLED: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev
+
+      - name: Install Python deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Pre-pull Postgres image for Testcontainers
+        run: |
+          docker pull postgres:16-alpine
+
+      - name: Run tests
+        run: |
+          mkdir -p reports
+          pytest -n auto \
+            --maxfail=1 \
+            --durations=10 \
+            --junitxml=reports/junit.xml \
+            --cov=bot --cov-report=xml:reports/coverage.xml --cov-report=term-missing
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports
