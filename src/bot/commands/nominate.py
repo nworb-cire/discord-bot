@@ -12,7 +12,12 @@ from sqlalchemy import select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Nomination
-from bot.utils import NOMINATION_CANCEL_EMOJI, handle_interaction_errors, utcnow
+from bot.utils import (
+    NOMINATION_CANCEL_EMOJI,
+    UserFacingError,
+    handle_interaction_errors,
+    utcnow,
+)
 
 settings = get_settings()
 ASIN_RE = re.compile(r"/([A-Z0-9]{10})(?:[/?]|$)")
@@ -68,7 +73,7 @@ class Nominate(commands.Cog):
                     length=meta.get("number_of_pages", None),
                 )
                 session.add(book)
-                await session.commit()
+                await session.flush()
                 logger.info(f"Inserted new book {book.isbn}")
 
             # TODO: Add new nomination only if it needs to be re-nominated, else return a message to the user
@@ -80,7 +85,7 @@ class Nominate(commands.Cog):
                 created_at=utcnow(),
             )
             session.add(nomination)
-            await session.commit()
+            await session.flush()
             summary_text = book.summary or "No summary available."
             if book.summary:
                 summary_text += "\n\nNote: AI generated summaries may be inaccurate."
@@ -88,8 +93,21 @@ class Nominate(commands.Cog):
             if book.length:
                 summary_text += f" {book.length} pages."
             embed = discord.Embed(title=book.title, description=summary_text)
-            channel = interaction.client.get_channel(settings.nom_channel_id)
-            message = await channel.send(embed=embed)
+            channel = None
+            client = getattr(interaction, "client", None)
+            if client and hasattr(client, "get_channel"):
+                channel = client.get_channel(settings.nom_channel_id)
+            if channel is None and client and hasattr(client, "fetch_channel"):
+                channel = await client.fetch_channel(settings.nom_channel_id)
+            if channel is None:
+                await session.rollback()
+                raise UserFacingError("Unable to locate the nominations channel. Please contact an admin.")
+            try:
+                message = await channel.send(embed=embed)
+            except Exception:
+                await session.rollback()
+                logger.exception("Failed to send nomination message to channel {}", settings.nom_channel_id)
+                raise UserFacingError("Failed to post nomination. Please try again later.")
             await message.add_reaction(NOMINATION_CANCEL_EMOJI)
             nomination.message_id = message.id
             session.add(nomination)

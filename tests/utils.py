@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, Iterable, List
 
+import discord
+
 
 class DummyResult:
     def __init__(self, *, scalar: Any = None, scalars: Iterable[Any] | None = None, rows: Iterable[Any] | None = None):
@@ -29,6 +31,8 @@ class DummySession:
         self.added = []
         self.executed = []
         self.commit_calls = 0
+        self.flush_calls = 0
+        self.rollback_calls = 0
         self._commit_hook = commit_hook
         self.deleted = []
 
@@ -58,6 +62,14 @@ class DummySession:
 
     async def delete(self, obj):
         self.deleted.append(obj)
+
+    async def flush(self):
+        self.flush_calls += 1
+        if self._commit_hook is not None:
+            await self._commit_hook(self)
+
+    async def rollback(self):
+        self.rollback_calls += 1
 
 
 @asynccontextmanager
@@ -125,7 +137,7 @@ class DummyChannel:
         return self._sent_messages.get(_message_id, SimpleNamespace(reactions=[]))
 
 
-class DummyInteraction:
+class DummyInteraction(discord.Interaction):
     def __init__(self, *, channel_id=10, user_id=42, user_roles=None, client=None):
         self.response = DummyResponse()
         self.followup = DummyFollowup()

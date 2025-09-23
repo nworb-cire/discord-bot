@@ -75,7 +75,8 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     await cog.nominate(interaction, "0-395-19395-8")
 
     assert interaction.followup.messages[-1]["content"].startswith("Nominated")
-    assert session.commit_calls >= 3
+    assert session.commit_calls == 1
+    assert session.flush_calls >= 2
     embed_entry = nom_channel.messages[0]
     assert embed_entry["embed"].title == "The Title: An Adventure"
     assert "Note: AI generated" in embed_entry["embed"].description
@@ -159,6 +160,45 @@ async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
     assert message.deleted is False
     assert session.deleted == []
     assert session.commit_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_nominate_handles_missing_channel(monkeypatch):
+    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    summary_text = "Summary"
+    fixed_now = utcnow()
+
+    async def commit_hook(session):
+        for obj in session.added:
+            if isinstance(obj, Book) and getattr(obj, "id", None) is None:
+                obj.id = 55
+
+    session = DummySession(execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook)
+    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
+
+    cog = Nominate(bot=SimpleNamespace())
+
+    async def fake_search(_isbn):
+        return {
+            "title": "Missing Channel Book",
+            "description": "Fun",
+        }
+
+    async def fake_summarize(_title, _desc):
+        return summary_text
+
+    monkeypatch.setattr(cog, "open_library_search", fake_search)
+    monkeypatch.setattr(cog, "openai_summarize", fake_summarize)
+
+    interaction = DummyInteraction(client=SimpleNamespace(get_channel=lambda _cid: None))
+
+    await cog.nominate(interaction, "0-395-19395-8")
+
+    assert interaction.followup.messages[-1]["content"] == "Unable to locate the nominations channel. Please contact an admin."
+    assert not session.deleted
+    assert session.commit_calls == 0
+    assert session.rollback_calls == 1
 
 
 @pytest.mark.asyncio

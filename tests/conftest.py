@@ -70,7 +70,10 @@ if "discord" not in sys.modules:
     discord_module.Embed = _Embed
     discord_module.Client = _Client
     discord_module.Intents = _Intents
-    discord_module.Interaction = object
+    class _Interaction:
+        pass
+
+    discord_module.Interaction = _Interaction
 
     class _RawReactionActionEvent:
         pass
