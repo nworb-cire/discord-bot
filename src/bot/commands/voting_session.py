@@ -1,5 +1,6 @@
 import asyncio
 from datetime import timedelta, datetime
+from typing import Optional
 
 import discord
 from discord import app_commands, Permissions
@@ -25,6 +26,49 @@ settings = get_settings()
 class VotingSession(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    @staticmethod
+    def _resolve_guild_id(interaction: discord.Interaction) -> Optional[int]:
+        guild_id = getattr(interaction, "guild_id", None)
+        if guild_id is None:
+            guild = getattr(interaction, "guild", None)
+            guild_id = getattr(guild, "id", None) if guild is not None else None
+        return guild_id
+
+    async def _get_ballot_entries(
+        self,
+        session,
+        ballot_ids: list[int],
+        guild_id: Optional[int],
+    ) -> list[tuple[Book, Optional[Nomination], Optional[str]]]:
+        if not ballot_ids:
+            return []
+
+        nominations_result = await session.execute(
+            select(Nomination).where(Nomination.book_id.in_(ballot_ids))
+        )
+        nominations_by_book = {
+            nomination.book_id: nomination
+            for nomination in nominations_result.scalars()
+        }
+        books_result = await session.execute(
+            select(Book).where(Book.id.in_(ballot_ids))
+        )
+        books_by_id = {book.id: book for book in books_result.scalars()}
+
+        entries: list[tuple[Book, Optional[Nomination], Optional[str]]] = []
+        for bid in ballot_ids:
+            book = books_by_id.get(bid)
+            if not book:
+                continue
+            nomination = nominations_by_book.get(bid)
+            jump_url = (
+                nomination_message_url(nomination.message_id, guild_id)
+                if nomination
+                else None
+            )
+            entries.append((book, nomination, jump_url))
+        return entries
 
     async def get_reacts_for_nomination(self, nomination: Nomination) -> int:
         """Get the number of unique users who reacted to a nomination."""
@@ -158,31 +202,9 @@ class VotingSession(commands.Cog):
             f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
         )
         async with async_session() as session:
-            nominations_result = await session.execute(
-                select(Nomination).where(Nomination.book_id.in_(ballot))
-            )
-            nominations_by_book = {
-                nomination.book_id: nomination
-                for nomination in nominations_result.scalars()
-            }
-            books_result = await session.execute(
-                select(Book).where(Book.id.in_(ballot))
-            )
-            books_by_id = {book.id: book for book in books_result.scalars()}
-            guild_id = getattr(interaction, "guild_id", None)
-            if guild_id is None:
-                guild = getattr(interaction, "guild", None)
-                guild_id = getattr(guild, "id", None) if guild is not None else None
-            for idx, bid in enumerate(ballot, start=1):
-                book = books_by_id.get(bid)
-                if not book:
-                    continue
-                nomination = nominations_by_book.get(bid)
-                jump_url = (
-                    nomination_message_url(nomination.message_id, guild_id)
-                    if nomination
-                    else None
-                )
+            guild_id = self._resolve_guild_id(interaction)
+            entries = await self._get_ballot_entries(session, ballot, guild_id)
+            for idx, (book, _nomination, jump_url) in enumerate(entries, start=1):
                 title = short_book_title(book.title)
                 field_name = (
                     f"{idx}. {title} {jump_url}"
@@ -244,31 +266,14 @@ class VotingSession(commands.Cog):
                 return
             embed = discord.Embed(title="Upcoming Ballot Preview")
             book_ids = [bid for bid, _, _, _ in ballot]
-            nominations_result = await session.execute(
-                select(Nomination).where(Nomination.book_id.in_(book_ids))
-            )
-            nominations_by_book = {
-                nomination.book_id: nomination
-                for nomination in nominations_result.scalars()
-            }
-            books_result = await session.execute(
-                select(Book).where(Book.id.in_(book_ids))
-            )
-            books_by_id = {book.id: book for book in books_result.scalars()}
-            guild_id = getattr(interaction, "guild_id", None)
-            if guild_id is None:
-                guild = getattr(interaction, "guild", None)
-                guild_id = getattr(guild, "id", None) if guild is not None else None
+            guild_id = self._resolve_guild_id(interaction)
+            entries = await self._get_ballot_entries(session, book_ids, guild_id)
+            entry_lookup = {entry[0].id: entry for entry in entries}
             for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
-                book = books_by_id.get(bid)
-                if not book:
+                entry = entry_lookup.get(bid)
+                if entry is None:
                     continue
-                nomination = nominations_by_book.get(bid)
-                jump_url = (
-                    nomination_message_url(nomination.message_id, guild_id)
-                    if nomination
-                    else None
-                )
+                book, _nomination, jump_url = entry
                 title = short_book_title(book.title)
                 field_name = (
                     f"{idx}. {title} {jump_url}"
