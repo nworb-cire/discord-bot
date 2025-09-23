@@ -30,6 +30,7 @@ class DummySession:
         self.executed = []
         self.commit_calls = 0
         self._commit_hook = commit_hook
+        self.deleted = []
 
     async def execute(self, stmt):
         if not self.execute_results:
@@ -54,6 +55,9 @@ class DummySession:
 
     async def refresh(self, _obj):
         return None
+
+    async def delete(self, obj):
+        self.deleted.append(obj)
 
 
 @asynccontextmanager
@@ -89,18 +93,36 @@ class DummyFollowup:
     async def send(self, content=None, *, ephemeral=False, embed=None):
         self.messages.append({"content": content, "ephemeral": ephemeral, "embed": embed})
 
+class DummyMessage:
+    def __init__(self, channel: DummyChannel | None, message_id: int, entry: dict[str, Any]):
+        self.channel = channel
+        self.id = message_id
+        self._entry = entry
+        self.reactions: list[Any] = []
+        self.deleted = False
+
+    async def add_reaction(self, emoji):
+        self._entry.setdefault("reactions", []).append(emoji)
+
+    async def delete(self):
+        self.deleted = True
+
 
 class DummyChannel:
     def __init__(self, channel_id: int):
         self.id = channel_id
         self.messages = []
+        self._sent_messages: dict[int, DummyMessage] = {}
 
     async def send(self, content=None, embed=None):
         self.messages.append({"content": content, "embed": embed})
-        return SimpleNamespace(id=len(self.messages))
+        message_id = len(self.messages)
+        message = DummyMessage(self, message_id, self.messages[-1])
+        self._sent_messages[message_id] = message
+        return message
 
     async def fetch_message(self, _message_id):
-        return SimpleNamespace(reactions=[])
+        return self._sent_messages.get(_message_id, SimpleNamespace(reactions=[]))
 
 
 class DummyInteraction:

@@ -71,6 +71,11 @@ if "discord" not in sys.modules:
     discord_module.Client = _Client
     discord_module.Intents = _Intents
     discord_module.Interaction = object
+
+    class _RawReactionActionEvent:
+        pass
+
+    discord_module.RawReactionActionEvent = _RawReactionActionEvent
     class _Permissions:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -111,7 +116,15 @@ if "discord" not in sys.modules:
         async def fetch_channel(self, channel_id):
             return self._channels.get(channel_id)
 
-    commands_module.Cog = object
+    class _Cog:
+        @staticmethod
+        def listener(*_args, **_kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
+    commands_module.Cog = _Cog
     commands_module.Bot = _Bot
     commands_module.command = _decorator
     commands_module.group = _decorator

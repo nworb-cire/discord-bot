@@ -3,10 +3,13 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from bot.config import get_settings
 from bot.commands.nominate import Nominate
 from bot.db import Book, Nomination
-from bot.utils import utcnow
+from bot.utils import NOMINATION_CANCEL_EMOJI, utcnow
 from tests.utils import DummyChannel, DummyInteraction, DummyResult, DummySession, session_cm
+
+settings = get_settings()
 
 
 class FakeOpenAI:
@@ -76,9 +79,86 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     embed_entry = nom_channel.messages[0]
     assert embed_entry["embed"].title == "The Title: An Adventure"
     assert "Note: AI generated" in embed_entry["embed"].description
+    assert NOMINATION_CANCEL_EMOJI in embed_entry["reactions"]
     assert interaction.channel.messages[0]["content"].startswith("<@99> nominated")
     nomination = next(obj for obj in session.added if isinstance(obj, Nomination))
     assert nomination.message_id == 1
+
+
+@pytest.mark.asyncio
+async def test_cancel_reaction_by_nominator_deletes_nomination(monkeypatch):
+    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+
+    nomination_row = SimpleNamespace(book_id=7, nominator_discord_id=88, message_id=1)
+    book_row = SimpleNamespace(id=7)
+    session = DummySession(
+        execute_results=[DummyResult(scalar=nomination_row)],
+        get_results={7: book_row},
+    )
+    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+
+    channel = DummyChannel(settings.nom_channel_id)
+    await channel.send(content="Nomination")
+
+    async def fetch_channel(_cid):
+        return channel
+
+    bot = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=fetch_channel,
+        user=SimpleNamespace(id=999),
+    )
+    cog = Nominate(bot=bot)
+
+    payload = SimpleNamespace(
+        channel_id=settings.nom_channel_id,
+        message_id=1,
+        user_id=88,
+        emoji=NOMINATION_CANCEL_EMOJI,
+    )
+
+    await cog.on_raw_reaction_add(payload)
+
+    message = await channel.fetch_message(1)
+    assert message.deleted is True
+    assert session.deleted == [nomination_row, book_row]
+    assert session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
+    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+
+    nomination_row = SimpleNamespace(book_id=7, nominator_discord_id=88, message_id=1)
+    session = DummySession(execute_results=[DummyResult(scalar=nomination_row)])
+    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+
+    channel = DummyChannel(settings.nom_channel_id)
+    await channel.send(content="Nomination")
+
+    async def fetch_channel(_cid):
+        return channel
+
+    bot = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=fetch_channel,
+        user=SimpleNamespace(id=999),
+    )
+    cog = Nominate(bot=bot)
+
+    payload = SimpleNamespace(
+        channel_id=settings.nom_channel_id,
+        message_id=1,
+        user_id=42,
+        emoji=NOMINATION_CANCEL_EMOJI,
+    )
+
+    await cog.on_raw_reaction_add(payload)
+
+    message = await channel.fetch_message(1)
+    assert message.deleted is False
+    assert session.deleted == []
+    assert session.commit_calls == 0
 
 
 @pytest.mark.asyncio

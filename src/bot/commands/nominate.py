@@ -1,4 +1,5 @@
 import re
+from contextlib import suppress
 from typing import Any
 
 import discord
@@ -11,7 +12,7 @@ from sqlalchemy import select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Nomination
-from bot.utils import handle_interaction_errors, utcnow
+from bot.utils import NOMINATION_CANCEL_EMOJI, handle_interaction_errors, utcnow
 
 settings = get_settings()
 ASIN_RE = re.compile(r"/([A-Z0-9]{10})(?:[/?]|$)")
@@ -30,6 +31,8 @@ class Nominate(commands.Cog):
     async def nominate(self, interaction: discord.Interaction, isbn: str):
         await interaction.response.defer(ephemeral=True)
         isbn = re.sub(r"[^\dX]", "", isbn)
+
+        full_title = ""
 
         async with async_session() as session:
             book_stmt = select(Book).where(Book.isbn == isbn)
@@ -78,20 +81,23 @@ class Nominate(commands.Cog):
             )
             session.add(nomination)
             await session.commit()
+            summary_text = book.summary or "No summary available."
+            if book.summary:
+                summary_text += "\n\nNote: AI generated summaries may be inaccurate."
+            summary_text += f"\n\nNominated by {interaction.user.mention}."
+            if book.length:
+                summary_text += f" {book.length} pages."
+            embed = discord.Embed(title=book.title, description=summary_text)
+            channel = interaction.client.get_channel(settings.nom_channel_id)
+            message = await channel.send(embed=embed)
+            await message.add_reaction(NOMINATION_CANCEL_EMOJI)
+            nomination.message_id = message.id
+            session.add(nomination)
+            await session.commit()
 
-        if summary:
-            summary += "\n\nNote: AI generated summaries may be inaccurate."
-        summary += f"\n\nNominated by {interaction.user.mention}."
-        if book.length:
-            summary += f" {book.length} pages."
-        embed = discord.Embed(title=book.title, description=summary)
-        message = await interaction.client.get_channel(settings.nom_channel_id).send(embed=embed)
-        nomination.message_id = message.id
-        session.add(nomination)
-        await session.commit()
-        await interaction.followup.send(f"Nominated *{full_title}*", ephemeral=True)
+        await interaction.followup.send(f"Nominated *{full_title or book.title}*", ephemeral=True)
         if interaction.channel.id != settings.nom_channel_id:
-            await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title}*")
+            await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title or book.title}*")
 
     async def open_library_search(self, isbn: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
@@ -108,3 +114,35 @@ class Nominate(commands.Cog):
             input=f"Book title: {title}\nDescription: {description}",
         )
         return response.output[0].content[0].text.strip() if response.output else "No summary available."
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        if payload.channel_id != settings.nom_channel_id:
+            return
+        if str(payload.emoji) != NOMINATION_CANCEL_EMOJI:
+            return
+        if payload.user_id == getattr(getattr(self.bot, "user", None), "id", None):
+            return
+
+        async with async_session() as session:
+            stmt = select(Nomination).where(Nomination.message_id == payload.message_id)
+            nomination = (await session.execute(stmt)).scalar_one_or_none()
+            if not nomination or payload.user_id != nomination.nominator_discord_id:
+                return
+
+            channel = None
+            if hasattr(self.bot, "get_channel"):
+                channel = self.bot.get_channel(payload.channel_id)
+            if channel is None and hasattr(self.bot, "fetch_channel"):
+                channel = await self.bot.fetch_channel(payload.channel_id)
+
+            if channel is not None:
+                with suppress(Exception):
+                    message = await channel.fetch_message(payload.message_id)
+                    await message.delete()
+
+            book = await session.get(Book, nomination.book_id)
+            await session.delete(nomination)
+            if book is not None:
+                await session.delete(book)
+            await session.commit()

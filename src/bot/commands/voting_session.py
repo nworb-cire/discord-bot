@@ -9,7 +9,12 @@ from sqlalchemy import select, func, literal_column
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
 from bot.election import close_and_tally
-from bot.utils import get_open_election, handle_interaction_errors, utcnow
+from bot.utils import (
+    NOMINATION_CANCEL_EMOJI,
+    get_open_election,
+    handle_interaction_errors,
+    utcnow,
+)
 
 settings = get_settings()
 
@@ -27,6 +32,9 @@ class VotingSession(commands.Cog):
 
         unique_users = set()
         for reaction in message.reactions:
+            emoji = getattr(reaction, "emoji", reaction)
+            if str(emoji) == NOMINATION_CANCEL_EMOJI:
+                continue
             async for user in reaction.users():
                 unique_users.add(user.id)
         return len(unique_users - {nomination.nominator_discord_id})

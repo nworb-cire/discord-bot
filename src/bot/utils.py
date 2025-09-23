@@ -11,6 +11,9 @@ from sqlalchemy import select
 from bot.db import Election
 
 
+NOMINATION_CANCEL_EMOJI = "❌"
+
+
 def utcnow() -> datetime:
     """
     Returns the current UTC time as a datetime object.

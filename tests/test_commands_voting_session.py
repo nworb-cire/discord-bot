@@ -7,6 +7,7 @@ import pytest
 from bot.commands.voting_session import VotingSession
 from bot.config import get_settings
 from bot.db import Election
+from bot.utils import NOMINATION_CANCEL_EMOJI
 from tests.utils import DummyChannel, DummyInteraction, DummyResult, DummySession, session_cm
 
 settings = get_settings()
@@ -191,15 +192,20 @@ async def test_get_reacts_for_nomination_counts_unique(monkeypatch):
             return generator()
 
     class DummyReaction:
-        def __init__(self, ids):
+        def __init__(self, ids, emoji):
             self._ids = ids
+            self.emoji = emoji
 
         def users(self):
             return DummyUsers(self._ids)
 
     class DummyMessage:
         def __init__(self):
-            self.reactions = [DummyReaction([1, 2, 3]), DummyReaction([2, 4])]
+            self.reactions = [
+                DummyReaction([1, 2, 3], "👍"),
+                DummyReaction([2, 4], "🔥"),
+                DummyReaction([99], NOMINATION_CANCEL_EMOJI),
+            ]
 
     class ReactChannel(DummyChannel):
         async def fetch_message(self, _message_id):
