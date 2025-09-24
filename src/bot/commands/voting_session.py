@@ -270,6 +270,11 @@ class VotingSession(commands.Cog):
             guild_id = self._resolve_guild_id(interaction)
             entries = await self._get_ballot_entries(session, book_ids, guild_id)
             entry_lookup = {entry[0].id: entry for entry in entries}
+
+            def _format(value: float) -> str:
+                text = f"{value:.1f}"
+                return text.rstrip("0").rstrip(".")
+
             for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
                 entry = entry_lookup.get(bid)
                 if entry is None:
@@ -283,9 +288,7 @@ class VotingSession(commands.Cog):
                 )
                 embed.add_field(
                     name=field_name,
-                    value=f"Score: {score:.1f}\n"
-                    f"Previous votes: {votes:.1f}\n"
-                    f"Reactions: {reacts}",
+                    value=f"Score: {_format(score)} ({_format(votes)} + {reacts})",
                     inline=False,
                 )
         await interaction.followup.send(embed=embed, ephemeral=True)

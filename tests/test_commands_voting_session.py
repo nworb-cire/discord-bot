@@ -310,7 +310,7 @@ async def test_ballot_preview_sends_embed(monkeypatch):
         f"https://discord.com/channels/123/{settings.nom_channel_id}/101"
     )
     assert embed.fields[0]["name"] == f"1. Book One {expected_preview_link}"
-    assert "Score" in embed.fields[0]["value"]
+    assert embed.fields[0]["value"] == "Score: 3 (1 + 2)"
 
 
 @pytest.mark.asyncio
