@@ -289,7 +289,7 @@ class VotingSession(commands.Cog):
                 )
                 embed.add_field(
                     name=field_name,
-                    value=f"Score: {_format(score)} ({_format(votes)} + {reacts})",
+                    value=f"Score: {_format(score)} ({_format(votes)} votes + {reacts} seconds)",
                     inline=False,
                 )
         await interaction.followup.send(embed=embed, ephemeral=True)
