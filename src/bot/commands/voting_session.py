@@ -133,10 +133,11 @@ class VotingSession(commands.Cog):
             .select_from(Book)
             .outerjoin(nominations_table, nominations_table.c.book_id == Book.id)
             .outerjoin(sub_votes, sub_votes.c.book_id == Book.id)
-            .where(func.coalesce(nominations_table.c.reactions, 0) > 0)
             .where(~Book.id.in_(winner_subq))
             .order_by(literal_column("score").desc(), Book.created_at)
         )
+        if not settings.is_staging:
+            stmt = stmt.where(func.coalesce(nominations_table.c.reactions, 0) > 0)
         if limit > 0:
             stmt = stmt.limit(limit)
         result = await session.execute(stmt)

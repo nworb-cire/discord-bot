@@ -17,6 +17,7 @@ services:
       - DATABASE_URL
       - REDIS_URL
       - PREDICTIONS_CHANNEL_ID
+      - STAGING
 
   db:
     image: postgres:16-alpine
@@ -54,6 +55,7 @@ services:
       - DATABASE_URL
       - REDIS_URL
       - PREDICTIONS_CHANNEL_ID
+      - STAGING
 
 
 volumes:

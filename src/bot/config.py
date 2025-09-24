@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     redis_url: str = Field(alias="REDIS_URL")
     openai_key: str = Field(alias="OPENAI_API_KEY")
+    is_staging: bool = Field(alias="STAGING", default=False)
 
     model_config = SettingsConfigDict(env_file=".env")
 

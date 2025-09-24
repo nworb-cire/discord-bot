@@ -40,6 +40,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    DATABASE_URL=postgresql+asyncpg://user:pwd@db/bot
    REDIS_URL=redis://redis:6379/0
    PREDICTIONS_CHANNEL_ID=1234567893
+   STAGING=false
    ```
 4. **Start services**
 
