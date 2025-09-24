@@ -372,6 +372,7 @@ async def _calculate_ballot(session, limit: int) -> list[dict[str, object]]:
         .select_from(Book)
         .join(nominations_table, nominations_table.c.book_id == Book.id)
         .outerjoin(vote_totals, vote_totals.c.book_id == Book.id)
+        .where(func.coalesce(nominations_table.c.reactions, 0) > 0)
         .order_by(literal_column("score").desc(), Book.created_at)
     )
     if limit:

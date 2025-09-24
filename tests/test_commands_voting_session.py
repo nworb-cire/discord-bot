@@ -37,6 +37,24 @@ async def test_get_top_noms_returns_scores(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_top_noms_requires_seconding(monkeypatch):
+    session = DummySession(execute_results=[DummyResult(rows=[])])
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
+
+    await vs.get_top_noms(session, limit=0)
+
+    stmt = session.executed[0]
+    clauses = list(stmt._where_criteria)
+    assert any(
+        getattr(clause.right, "value", None) == 0
+        and clause.operator.__name__ == "gt"
+        and "reactions" in str(clause.left)
+        for clause in clauses
+    ), "Ballot query should require at least one reaction"
+
+
+@pytest.mark.asyncio
 async def test_open_voting_aborts_if_open(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
@@ -68,7 +86,9 @@ async def test_open_voting_creates_election(monkeypatch):
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
     monkeypatch.setattr(
-        vs, "get_top_noms", AsyncMock(return_value=[(1, 0, 0.0, 0.0), (2, 1, 2.0, 3.0)])
+        vs,
+        "get_top_noms",
+        AsyncMock(return_value=[(1, 1, 1.0, 2.0), (2, 2, 2.0, 4.0)]),
     )
     fake_embed = AsyncMock()
     monkeypatch.setattr(vs, "_election_embed", fake_embed)
@@ -97,7 +117,7 @@ async def test_open_voting_accepts_custom_ballot_size(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
-    ballot_mock = AsyncMock(return_value=[(1, 0, 0.0, 0.0)])
+    ballot_mock = AsyncMock(return_value=[(1, 1, 0.0, 1.0)])
     monkeypatch.setattr(vs, "get_top_noms", ballot_mock)
     monkeypatch.setattr(vs, "_election_embed", AsyncMock())
     monkeypatch.setattr(
