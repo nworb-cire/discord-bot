@@ -62,6 +62,13 @@ uv tool run pre-commit install --hook-type pre-commit
 
 The hook runs `uv run pytest tests` on each commit. Set `SKIP=unit-tests` when committing if you need to bypass it temporarily. The hook pins `UV_CACHE_DIR=.uv-cache` so it can write inside the repo sandbox.
 
+Secret scanning is enforced via `detect-secrets`. If you add configuration files or text that triggers the scanner, regenerate the baseline and audit the findings:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run --with detect-secrets detect-secrets scan > .secrets.baseline
+UV_CACHE_DIR=.uv-cache uv run --with detect-secrets detect-secrets audit .secrets.baseline
+```
+
 ## Contributing
 
 1. Fork the repository and create a feature branch: `git checkout -b feature/my-feature`
