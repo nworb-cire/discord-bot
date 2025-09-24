@@ -3,8 +3,9 @@ from discord.ext import tasks, commands
 from loguru import logger
 
 from bot.background import close_expired_elections, send_prediction_reminders
-from bot.commands.vote import Ballot
 from bot.config import get_settings
+from bot.commands.predict import Predict
+from bot.commands.vote import Ballot
 from bot.commands.nominate import Nominate
 from bot.commands.voting_session import VotingSession
 
@@ -20,6 +21,7 @@ async def setup_commands():
     await bot.add_cog(Nominate(bot))
     await bot.add_cog(VotingSession(bot))
     await bot.add_cog(Ballot(bot))
+    await bot.add_cog(Predict(bot))
 
 
 @bot.event

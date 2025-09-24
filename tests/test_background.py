@@ -32,10 +32,14 @@ def test_close_expired_elections_triggers_tally(monkeypatch):
         client = object()
 
         monkeypatch.setattr(background_mod, "utcnow", lambda: now)
-        monkeypatch.setattr(background_mod, "get_open_election", AsyncMock(return_value=election))
+        monkeypatch.setattr(
+            background_mod, "get_open_election", AsyncMock(return_value=election)
+        )
         tally = AsyncMock()
         monkeypatch.setattr(background_mod, "close_and_tally", tally)
-        monkeypatch.setattr(background_mod, "async_session", lambda: _session_cm(session))
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
 
         await background_mod.close_expired_elections(client)
 
@@ -51,10 +55,14 @@ def test_close_expired_elections_ignores_active(monkeypatch):
         session = object()
 
         monkeypatch.setattr(background_mod, "utcnow", lambda: now)
-        monkeypatch.setattr(background_mod, "get_open_election", AsyncMock(return_value=election))
+        monkeypatch.setattr(
+            background_mod, "get_open_election", AsyncMock(return_value=election)
+        )
         tally = AsyncMock()
         monkeypatch.setattr(background_mod, "close_and_tally", tally)
-        monkeypatch.setattr(background_mod, "async_session", lambda: _session_cm(session))
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
 
         await background_mod.close_expired_elections(object())
 
@@ -66,16 +74,26 @@ def test_close_expired_elections_ignores_active(monkeypatch):
 def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
     async def _run():
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        prediction = SimpleNamespace(text="Read more sci-fi", reminded=False)
+        prediction = SimpleNamespace(
+            text="Read more sci-fi", reminded=False, message_id=17
+        )
         session = SimpleNamespace()
         session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))
         session.commit = AsyncMock()
-        channel = SimpleNamespace(send=AsyncMock())
+        channel = SimpleNamespace(
+            send=AsyncMock(),
+            id=5,
+            guild=SimpleNamespace(id=9),
+        )
         client = SimpleNamespace(get_channel=lambda _: channel)
 
         monkeypatch.setattr(background_mod, "utcnow", lambda: now)
-        monkeypatch.setattr(background_mod, "settings", SimpleNamespace(predictions_channel_id=4))
-        monkeypatch.setattr(background_mod, "async_session", lambda: _session_cm(session))
+        monkeypatch.setattr(
+            background_mod, "settings", SimpleNamespace(predictions_channel_id=4)
+        )
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
 
         await background_mod.send_prediction_reminders(client)
 
@@ -83,6 +101,7 @@ def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
         message = channel.send.await_args.args[0]
         assert "Reminder to adjudicate prediction" in message
         assert "> Read more sci-fi" in message
+        assert "https://discord.com/channels/9/5/17" in message
         session.commit.assert_awaited_once()
 
     asyncio.run(_run())

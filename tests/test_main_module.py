@@ -1,4 +1,3 @@
-import importlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,12 +15,13 @@ async def test_setup_commands_adds_cogs(monkeypatch):
     monkeypatch.setattr(main, "Nominate", FakeCog)
     monkeypatch.setattr(main, "VotingSession", FakeCog)
     monkeypatch.setattr(main, "Ballot", FakeCog)
+    monkeypatch.setattr(main, "Predict", FakeCog)
 
     main.bot.added_cogs.clear()
 
     await main.setup_commands()
 
-    assert len(main.bot.added_cogs) == 3
+    assert len(main.bot.added_cogs) == 4
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,9 @@ async def test_on_ready_syncs_commands(monkeypatch):
     monkeypatch.setattr(main, "setup_commands", AsyncMock())
     sync_mock = AsyncMock(return_value=[1])
     monkeypatch.setattr(main.bot, "tree", SimpleNamespace(sync=sync_mock))
-    monkeypatch.setattr(main, "logger", SimpleNamespace(info=lambda *args, **kwargs: None))
+    monkeypatch.setattr(
+        main, "logger", SimpleNamespace(info=lambda *args, **kwargs: None)
+    )
 
     await main.on_ready()
 

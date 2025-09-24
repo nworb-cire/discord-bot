@@ -20,6 +20,7 @@ dependencies = [
     "aioredis>=2.0",
     "python-dotenv>=1.0",
     "alembic>=1.16.2",
+    "dateparser>=1.2",
 ]
 
 [project.optional-dependencies]

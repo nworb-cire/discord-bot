@@ -142,6 +142,13 @@ class DummyMessage:
         self._entry = entry
         self.reactions: list[Any] = []
         self.deleted = False
+        if channel is not None and getattr(channel, "guild", None) is not None:
+            guild_id = channel.guild.id
+            self.jump_url = (
+                f"https://discord.com/channels/{guild_id}/{channel.id}/{self.id}"
+            )
+        else:
+            self.jump_url = None
 
     async def add_reaction(self, emoji):
         self._entry.setdefault("reactions", []).append(emoji)
@@ -151,8 +158,9 @@ class DummyMessage:
 
 
 class DummyChannel:
-    def __init__(self, channel_id: int):
+    def __init__(self, channel_id: int, guild_id: int = 1):
         self.id = channel_id
+        self.guild = SimpleNamespace(id=guild_id)
         self.messages = []
         self._sent_messages: dict[int, DummyMessage] = {}
 
