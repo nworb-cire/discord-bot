@@ -73,11 +73,12 @@ async def test_predict_accepts_datetime_input(monkeypatch):
         interaction,
         due="2024-01-10T15:30:00-05:00",
         text="A bold claim",
-        probability=None,
+        probability=0.5,
     )
 
     record = session.added[0]
     assert record.due_at == datetime(2024, 1, 10, 13, 30)
+    assert float(record.odds) == pytest.approx(50.0)
 
 
 @pytest.mark.asyncio
@@ -99,12 +100,13 @@ async def test_predict_accepts_relative_minutes(monkeypatch):
         interaction,
         due="in 2 minutes",
         text="Quick event",
-        probability=None,
+        probability=0.4,
     )
 
     expected_local = base.astimezone(ZoneInfo("America/Denver")) + timedelta(minutes=2)
     record = session.added[0]
     assert record.due_at == expected_local.replace(tzinfo=None)
+    assert float(record.odds) == pytest.approx(40.0)
 
 
 @pytest.mark.asyncio
@@ -119,7 +121,7 @@ async def test_predict_handles_invalid_date(monkeypatch):
 
     cog = Predict(bot)
 
-    await cog.predict(interaction, due="not-a-date", text="Test", probability=None)
+    await cog.predict(interaction, due="not-a-date", text="Test", probability=0.5)
 
     error_message = interaction.response.messages[0]["content"]
     assert "Could not parse due date" in error_message
@@ -141,7 +143,7 @@ async def test_predict_parses_natural_language(monkeypatch):
     cog = Predict(bot)
 
     await cog.predict(
-        interaction, due="next week", text="We finish the book", probability=None
+        interaction, due="next week", text="We finish the book", probability=0.8
     )
 
     record = session.added[0]
@@ -149,3 +151,4 @@ async def test_predict_parses_natural_language(monkeypatch):
         ZoneInfo("America/Denver")
     ) + timedelta(weeks=1)
     assert record.due_at == expected_local.replace(tzinfo=None)
+    assert float(record.odds) == pytest.approx(80.0)

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from datetime import timezone
-from typing import Optional
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -18,9 +16,7 @@ from bot.utils import (
 settings = get_settings()
 
 
-def _normalize_probability(probability: Optional[float]) -> Optional[float]:
-    if probability is None:
-        return None
+def _normalize_probability(probability: float) -> float:
     if probability < 0:
         raise UserFacingError("Probability must be non-negative.")
     percent = probability * 100 if probability <= 1 else probability
@@ -39,7 +35,7 @@ class Predict(commands.Cog):
     @app_commands.describe(
         due="Due date for judging (YYYY-MM-DD or ISO datetime).",
         text="Prediction text.",
-        probability="Optional probability (0-1 or 0-100).",
+        probability="Probability (0-1 or 0-100).",
     )
     @handle_interaction_errors()
     async def predict(
@@ -47,7 +43,7 @@ class Predict(commands.Cog):
         interaction: discord.Interaction,
         due: str,
         text: str,
-        probability: Optional[float] = None,
+        probability: float,
     ) -> None:
         try:
             due_at_local = parse_due_datetime(due)
@@ -69,8 +65,7 @@ class Predict(commands.Cog):
             f"> {prediction_text}",
             f"Due: <t:{due_timestamp}:f> (<t:{due_timestamp}:R>)",
         ]
-        if probability_percent is not None:
-            lines.append(f"Confidence: {probability_percent:.1f}%")
+        lines.append(f"Confidence: {probability_percent:.1f}%")
         message = await channel.send("\n".join(lines))
 
         async with async_session() as session:
