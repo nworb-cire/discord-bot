@@ -52,9 +52,7 @@ def parse_due_datetime(value: str) -> datetime:
     if not cleaned:
         raise ValueError("Due date cannot be empty.")
 
-    base = (
-        utcnow().astimezone(MOUNTAIN).replace(hour=0, minute=0, second=0, microsecond=0)
-    )
+    base = utcnow().astimezone(MOUNTAIN)
     parsed = dateparser.parse(
         cleaned,
         settings={

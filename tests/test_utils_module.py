@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -55,7 +55,8 @@ def test_parse_due_date_accepts_natural_language(monkeypatch):
     monkeypatch.setattr("bot.utils.utcnow", lambda: base)
     result = parse_due_datetime("next week")
     assert result.tzinfo == ZoneInfo("America/Denver")
-    assert result.date() == datetime(2024, 1, 7).date()
+    expected = base.astimezone(ZoneInfo("America/Denver")) + timedelta(weeks=1)
+    assert result == expected
 
 
 def test_parse_due_date_rejects_bad_input():

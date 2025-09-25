@@ -1,6 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -79,6 +81,33 @@ async def test_predict_accepts_datetime_input(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_predict_accepts_relative_minutes(monkeypatch):
+    session = DummySession()
+    monkeypatch.setattr(
+        "bot.commands.predict.async_session", lambda: session_cm(session)
+    )
+    channel = DummyChannel(5, guild_id=42)
+    bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
+    interaction = DummyInteraction()
+
+    base = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+
+    cog = Predict(bot)
+
+    await cog.predict(
+        interaction,
+        due="in 2 minutes",
+        text="Quick event",
+        probability=None,
+    )
+
+    expected_local = base.astimezone(ZoneInfo("America/Denver")) + timedelta(minutes=2)
+    record = session.added[0]
+    assert record.due_at == expected_local.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
 async def test_predict_handles_invalid_date(monkeypatch):
     session = DummySession()
     monkeypatch.setattr(
@@ -116,4 +145,7 @@ async def test_predict_parses_natural_language(monkeypatch):
     )
 
     record = session.added[0]
-    assert record.due_at == datetime(2024, 1, 7, 0, 0)
+    expected_local = datetime(2024, 1, 1, tzinfo=timezone.utc).astimezone(
+        ZoneInfo("America/Denver")
+    ) + timedelta(weeks=1)
+    assert record.due_at == expected_local.replace(tzinfo=None)
