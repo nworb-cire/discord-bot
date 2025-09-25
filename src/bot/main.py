@@ -39,7 +39,7 @@ async def election_auto_close():
     await close_expired_elections(bot)
 
 
-@tasks.loop(hours=24)
+@tasks.loop(minutes=1)
 async def prediction_reminder():
     await send_prediction_reminders(bot)
 
