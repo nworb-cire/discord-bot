@@ -1,9 +1,10 @@
 import asyncio
 from contextlib import suppress
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from functools import wraps
 from string import capwords
 from typing import Any, Awaitable, Callable, Optional, TypeVar
+from zoneinfo import ZoneInfo
 
 import dateparser
 import discord
@@ -16,6 +17,7 @@ from bot.db import Election
 
 NOMINATION_CANCEL_EMOJI = "❌"
 settings = get_settings()
+MOUNTAIN = ZoneInfo("America/Denver")
 
 
 def utcnow() -> datetime:
@@ -43,20 +45,24 @@ def short_book_title(title: str) -> str:
     return capwords(shortened)
 
 
-def parse_due_date(value: str) -> date:
-    """Parse natural language or ISO-style text into a calendar date."""
+def parse_due_datetime(value: str) -> datetime:
+    """Parse natural language or ISO-style text into a Mountain Time datetime."""
 
     cleaned = value.strip()
     if not cleaned:
         raise ValueError("Due date cannot be empty.")
 
-    base = utcnow()
+    base = (
+        utcnow().astimezone(MOUNTAIN).replace(hour=0, minute=0, second=0, microsecond=0)
+    )
     parsed = dateparser.parse(
         cleaned,
         settings={
             "RELATIVE_BASE": base,
             "RETURN_AS_TIMEZONE_AWARE": True,
             "PREFER_DATES_FROM": "future",
+            "TIMEZONE": "America/Denver",
+            "TO_TIMEZONE": "America/Denver",
         },
     )
     if parsed is None:
@@ -64,8 +70,14 @@ def parse_due_date(value: str) -> date:
             "Could not parse due date. Try phrases like 'next week' or use YYYY-MM-DD."
         )
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=base.tzinfo)
-    return parsed.date()
+        parsed = parsed.replace(tzinfo=MOUNTAIN)
+    return parsed.astimezone(MOUNTAIN)
+
+
+def parse_due_date(value: str) -> datetime:
+    """Backward compatible wrapper for parse_due_datetime."""
+
+    return parse_due_datetime(value)
 
 
 def nomination_message_url(message_id: int, guild_id: Optional[int]) -> Optional[str]:

@@ -1,10 +1,20 @@
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
-    AsyncSession,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Numeric, BigInteger, Text, Boolean, ForeignKey, Date, TIMESTAMP, JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    Integer,
+    String,
+    Numeric,
+    BigInteger,
+    Text,
+    Boolean,
+    ForeignKey,
+    DateTime,
+    TIMESTAMP,
+    JSON,
+)
 from datetime import datetime
 from bot.config import get_settings
 
@@ -26,7 +36,9 @@ class Book(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=True)
     isbn: Mapped[str] = mapped_column(String(13), unique=True, nullable=True)
     length: Mapped[int] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow
+    )
 
 
 class Nomination(Base):
@@ -37,7 +49,9 @@ class Nomination(Base):
     nominator_discord_id: Mapped[int] = mapped_column(BigInteger)
     message_id: Mapped[int] = mapped_column(BigInteger)
     reactions: Mapped[int] = mapped_column(Integer)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow
+    )
 
 
 class Election(Base):
@@ -50,15 +64,21 @@ class Election(Base):
     closed_by: Mapped[int] = mapped_column(BigInteger, nullable=True)
     closed_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     ballot: Mapped[list[int]] = mapped_column(JSON)
-    winner: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="SET NULL"), nullable=True)
+    winner: Mapped[int] = mapped_column(
+        ForeignKey("books.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class Vote(Base):
     __tablename__ = "votes"
 
-    election_id: Mapped[int] = mapped_column(ForeignKey("elections.id", ondelete="CASCADE"), primary_key=True)
+    election_id: Mapped[int] = mapped_column(
+        ForeignKey("elections.id", ondelete="CASCADE"), primary_key=True
+    )
     voter_discord_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(
+        ForeignKey("books.id", ondelete="CASCADE"), primary_key=True
+    )
     weight: Mapped[float] = mapped_column(Numeric)
 
 
@@ -69,7 +89,9 @@ class Prediction(Base):
     predictor_discord_id: Mapped[int] = mapped_column(BigInteger)
     text: Mapped[str] = mapped_column(Text)
     odds: Mapped[float] = mapped_column(Numeric(4, 1))
-    due_date: Mapped[Date] = mapped_column(Date)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
     message_id: Mapped[int] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow
+    )
     reminded: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -4,7 +4,7 @@ from sqlalchemy import select
 from bot.config import get_settings
 from bot.db import async_session, Prediction
 from bot.election import close_and_tally
-from bot.utils import utcnow, get_open_election
+from bot.utils import MOUNTAIN, get_open_election, utcnow
 
 settings = get_settings()
 
@@ -18,11 +18,12 @@ async def close_expired_elections(bot: discord.Client):
 
 
 async def send_prediction_reminders(bot: discord.Client):
-    today = utcnow().date()
+    now_local = utcnow().astimezone(MOUNTAIN)
+    cutoff = now_local.replace(tzinfo=None)
     async with async_session() as session:
         result = await session.execute(
             select(Prediction).where(
-                Prediction.due_date == today, Prediction.reminded.is_(False)
+                Prediction.due_at <= cutoff, Prediction.reminded.is_(False)
             )
         )
         preds = list(result.scalars())

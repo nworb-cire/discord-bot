@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -74,8 +75,12 @@ def test_close_expired_elections_ignores_active(monkeypatch):
 def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
     async def _run():
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        local_due = now.astimezone(ZoneInfo("America/Denver")).replace(tzinfo=None)
         prediction = SimpleNamespace(
-            text="Read more sci-fi", reminded=False, message_id=17
+            text="Read more sci-fi",
+            reminded=False,
+            message_id=17,
+            due_at=local_due,
         )
         session = SimpleNamespace()
         session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))

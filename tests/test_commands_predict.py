@@ -30,7 +30,7 @@ async def test_predict_records_prediction(monkeypatch):
     assert isinstance(record, Prediction)
     assert record.text == "We read more sci-fi"
     assert float(record.odds) == pytest.approx(60.0)
-    assert str(record.due_date) == "2024-01-10"
+    assert record.due_at == datetime(2024, 1, 10, 0, 0)
     assert session.commit_calls == 1
     response = interaction.response.messages[0]
     assert "Prediction scheduled" in response["content"]
@@ -53,6 +53,29 @@ async def test_predict_accepts_percentage(monkeypatch):
 
     record = session.added[0]
     assert float(record.odds) == pytest.approx(75.0)
+
+
+@pytest.mark.asyncio
+async def test_predict_accepts_datetime_input(monkeypatch):
+    session = DummySession()
+    monkeypatch.setattr(
+        "bot.commands.predict.async_session", lambda: session_cm(session)
+    )
+    channel = DummyChannel(5, guild_id=42)
+    bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
+    interaction = DummyInteraction()
+
+    cog = Predict(bot)
+
+    await cog.predict(
+        interaction,
+        due="2024-01-10T15:30:00-05:00",
+        text="A bold claim",
+        probability=None,
+    )
+
+    record = session.added[0]
+    assert record.due_at == datetime(2024, 1, 10, 13, 30)
 
 
 @pytest.mark.asyncio
@@ -93,4 +116,4 @@ async def test_predict_parses_natural_language(monkeypatch):
     )
 
     record = session.added[0]
-    assert str(record.due_date) == "2024-01-08"
+    assert record.due_at == datetime(2024, 1, 7, 0, 0)

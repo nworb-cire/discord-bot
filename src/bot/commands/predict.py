@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Optional
 
 import discord
@@ -12,7 +12,7 @@ from bot.db import Prediction, async_session
 from bot.utils import (
     UserFacingError,
     handle_interaction_errors,
-    parse_due_date,
+    parse_due_datetime,
 )
 
 settings = get_settings()
@@ -50,7 +50,7 @@ class Predict(commands.Cog):
         probability: Optional[float] = None,
     ) -> None:
         try:
-            due_date = parse_due_date(due)
+            due_at_local = parse_due_datetime(due)
         except ValueError as exc:
             raise UserFacingError(str(exc)) from exc
 
@@ -63,15 +63,11 @@ class Predict(commands.Cog):
         if channel is None:
             channel = await self.bot.fetch_channel(settings.predictions_channel_id)
 
-        due_timestamp = int(
-            datetime.combine(
-                due_date, datetime.min.time(), tzinfo=timezone.utc
-            ).timestamp()
-        )
+        due_timestamp = int(due_at_local.astimezone(timezone.utc).timestamp())
         lines = [
             f"**Prediction from {interaction.user.mention}**",
             f"> {prediction_text}",
-            f"Due: <t:{due_timestamp}:D> (<t:{due_timestamp}:R>)",
+            f"Due: <t:{due_timestamp}:f> (<t:{due_timestamp}:R>)",
         ]
         if probability_percent is not None:
             lines.append(f"Confidence: {probability_percent:.1f}%")
@@ -82,7 +78,7 @@ class Predict(commands.Cog):
                 predictor_discord_id=interaction.user.id,
                 text=prediction_text,
                 odds=probability_percent,
-                due_date=due_date,
+                due_at=due_at_local.replace(tzinfo=None),
                 message_id=message.id,
             )
             session.add(record)
