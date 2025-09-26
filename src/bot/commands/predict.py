@@ -66,7 +66,8 @@ class Predict(commands.Cog):
             f"Due: <t:{due_timestamp}:f> (<t:{due_timestamp}:R>)",
         ]
         lines.append(f"Confidence: {probability_percent:.1f}%")
-        message = await channel.send("\n".join(lines))
+        message_payload = "\n".join(lines)
+        message = await channel.send(message_payload)
 
         async with async_session() as session:
             record = Prediction(
@@ -87,6 +88,12 @@ class Predict(commands.Cog):
                 link = (
                     f"https://discord.com/channels/{guild_id}/{channel.id}/{message.id}"
                 )
+
+        if (
+            interaction.channel
+            and interaction.channel.id != settings.predictions_channel_id
+        ):
+            await interaction.channel.send(message_payload)
 
         response_lines = [f"Prediction scheduled for <t:{due_timestamp}:D>."]
         if link:

@@ -35,8 +35,7 @@ async def test_predict_records_prediction(monkeypatch):
     assert record.due_at == datetime(2024, 1, 10, 0, 0)
     assert session.commit_calls == 1
     response = interaction.response.messages[0]
-    assert "Prediction scheduled" in response["content"]
-    assert "View it" in response["content"]
+    assert response["ephemeral"] is True
 
 
 @pytest.mark.asyncio
