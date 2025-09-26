@@ -20,11 +20,14 @@ async def test_predict_records_prediction(monkeypatch):
     channel = DummyChannel(5, guild_id=42)
     bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
     interaction = DummyInteraction()
+    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
 
     cog = Predict(bot)
 
     await cog.predict(
-        interaction, due="2024-01-10", text="We read more sci-fi", probability=0.6
+        interaction, due="2024-01-10", text="We read more sci-fi", probability=60
     )
 
     assert len(channel.messages) == 1
@@ -47,6 +50,9 @@ async def test_predict_accepts_percentage(monkeypatch):
     channel = DummyChannel(5, guild_id=42)
     bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
     interaction = DummyInteraction()
+    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
 
     cog = Predict(bot)
 
@@ -65,6 +71,9 @@ async def test_predict_accepts_datetime_input(monkeypatch):
     channel = DummyChannel(5, guild_id=42)
     bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
     interaction = DummyInteraction()
+    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
 
     cog = Predict(bot)
 
@@ -72,7 +81,7 @@ async def test_predict_accepts_datetime_input(monkeypatch):
         interaction,
         due="2024-01-10T15:30:00-05:00",
         text="A bold claim",
-        probability=0.5,
+        probability=50,
     )
 
     record = session.added[0]
@@ -92,6 +101,7 @@ async def test_predict_accepts_relative_minutes(monkeypatch):
 
     base = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
 
     cog = Predict(bot)
 
@@ -99,7 +109,7 @@ async def test_predict_accepts_relative_minutes(monkeypatch):
         interaction,
         due="in 2 minutes",
         text="Quick event",
-        probability=0.4,
+        probability=40,
     )
 
     expected_local = base.astimezone(ZoneInfo("America/Denver")) + timedelta(minutes=2)
@@ -120,7 +130,7 @@ async def test_predict_handles_invalid_date(monkeypatch):
 
     cog = Predict(bot)
 
-    await cog.predict(interaction, due="not-a-date", text="Test", probability=0.5)
+    await cog.predict(interaction, due="not-a-date", text="Test", probability=50)
 
     error_message = interaction.response.messages[0]["content"]
     assert "Could not parse due date" in error_message
@@ -138,11 +148,12 @@ async def test_predict_parses_natural_language(monkeypatch):
 
     base = datetime(2024, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
 
     cog = Predict(bot)
 
     await cog.predict(
-        interaction, due="next week", text="We finish the book", probability=0.8
+        interaction, due="next week", text="We finish the book", probability=80
     )
 
     record = session.added[0]
@@ -151,3 +162,51 @@ async def test_predict_parses_natural_language(monkeypatch):
     ) + timedelta(weeks=1)
     assert record.due_at == expected_local.replace(tzinfo=None)
     assert float(record.odds) == pytest.approx(80.0)
+
+
+@pytest.mark.asyncio
+async def test_predict_rejects_probability_bounds(monkeypatch):
+    session = DummySession()
+    monkeypatch.setattr(
+        "bot.commands.predict.async_session", lambda: session_cm(session)
+    )
+    channel = DummyChannel(5, guild_id=42)
+    bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
+    interaction = DummyInteraction()
+    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
+
+    cog = Predict(bot)
+
+    await cog.predict(interaction, due="2024-01-10", text="Test", probability=0)
+
+    error_message = interaction.response.messages[0]["content"]
+    assert "between 0 and 100" in error_message
+
+
+@pytest.mark.asyncio
+async def test_predict_rejects_past_due(monkeypatch):
+    session = DummySession()
+    monkeypatch.setattr(
+        "bot.commands.predict.async_session", lambda: session_cm(session)
+    )
+    channel = DummyChannel(5, guild_id=42)
+    bot = SimpleNamespace(get_channel=lambda _cid: channel, fetch_channel=AsyncMock())
+    interaction = DummyInteraction()
+
+    base = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.utils.utcnow", lambda: base)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
+
+    cog = Predict(bot)
+
+    await cog.predict(
+        interaction,
+        due="2024-01-01",
+        text="Past",
+        probability=50,
+    )
+
+    error_message = interaction.response.messages[0]["content"]
+    assert "future" in error_message

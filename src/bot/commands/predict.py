@@ -8,21 +8,20 @@ from discord.ext import commands
 from bot.config import get_settings
 from bot.db import Prediction, async_session
 from bot.utils import (
+    MOUNTAIN,
     UserFacingError,
     handle_interaction_errors,
     parse_due_datetime,
+    utcnow,
 )
 
 settings = get_settings()
 
 
 def _normalize_probability(probability: float) -> float:
-    if probability < 0:
-        raise UserFacingError("Probability must be non-negative.")
-    percent = probability * 100 if probability <= 1 else probability
-    if percent > 100:
-        raise UserFacingError("Probability cannot exceed 100%.")
-    return round(percent, 1)
+    if probability <= 0 or probability >= 100:
+        raise UserFacingError("Probability must be between 0 and 100 (exclusive).")
+    return round(probability, 1)
 
 
 class Predict(commands.Cog):
@@ -35,7 +34,7 @@ class Predict(commands.Cog):
     @app_commands.describe(
         due="Due date for judging (YYYY-MM-DD or ISO datetime).",
         text="Prediction text.",
-        probability="Probability (0-1 or 0-100).",
+        probability="Probability percent (0-100, exclusive).",
     )
     @handle_interaction_errors()
     async def predict(
@@ -49,6 +48,10 @@ class Predict(commands.Cog):
             due_at_local = parse_due_datetime(due)
         except ValueError as exc:
             raise UserFacingError(str(exc)) from exc
+
+        now_local = utcnow().astimezone(MOUNTAIN)
+        if due_at_local <= now_local:
+            raise UserFacingError("Due time must be in the future.")
 
         probability_percent = _normalize_probability(probability)
         prediction_text = text.strip()
