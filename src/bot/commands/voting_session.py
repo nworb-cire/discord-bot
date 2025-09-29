@@ -10,6 +10,7 @@ from sqlalchemy import select, func, literal_column
 
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
+from bot.reactions import update_election_vote_reaction
 from bot.election import close_and_tally
 from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
@@ -192,10 +193,15 @@ class VotingSession(commands.Cog):
             )
             session.add(election)
             await session.commit()
-        await self._election_embed(interaction, ballot_ids, closes_at)
+            await session.refresh(election)
+        await self._election_embed(interaction, election.id, ballot_ids, closes_at)
 
     async def _election_embed(
-        self, interaction: discord.Interaction, ballot: list[int], closes_at: datetime
+        self,
+        interaction: discord.Interaction,
+        election_id: int,
+        ballot: list[int],
+        closes_at: datetime,
     ):
         closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
@@ -217,9 +223,25 @@ class VotingSession(commands.Cog):
                 if len(summary) > 1024:
                     summary = summary[:1021] + "..."
                 embed.add_field(name=field_name, value=summary, inline=False)
-        await interaction.client.get_channel(settings.bookclub_channel_id).send(
-            embed=embed
-        )
+        channel = interaction.client.get_channel(settings.bookclub_channel_id)
+        if channel is None:
+            channel = await interaction.client.fetch_channel(
+                settings.bookclub_channel_id
+            )
+        message = await channel.send(embed=embed)
+        async with async_session() as session:
+            election = await session.get(Election, election_id)
+            if election:
+                election.ballot_message_id = message.id
+                session.add(election)
+                await session.commit()
+        try:
+            await update_election_vote_reaction(interaction.client, election_id)
+        except Exception:
+            logger.exception(
+                "Failed to set initial vote reaction for election %s",
+                election_id,
+            )
         await interaction.followup.send("Election opened.", ephemeral=True)
 
     @app_commands.command(

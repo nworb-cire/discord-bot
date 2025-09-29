@@ -162,10 +162,16 @@ async def test_election_embed_posts_summary(monkeypatch):
             DummyResult(
                 scalars=[SimpleNamespace(id=1, title="Book", summary=long_summary)]
             ),
-        ]
+        ],
+        get_results={1: SimpleNamespace(id=1, ballot_message_id=None)},
     )
     monkeypatch.setattr(
         "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    update_mock = AsyncMock()
+    monkeypatch.setattr(
+        "bot.commands.voting_session.update_election_vote_reaction",
+        update_mock,
     )
     vs = VotingSession(bot=SimpleNamespace())
     channel = DummyChannel(2)
@@ -175,7 +181,7 @@ async def test_election_embed_posts_summary(monkeypatch):
     interaction.guild_id = 123
     closes_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
-    await vs._election_embed(interaction, [1], closes_at)
+    await vs._election_embed(interaction, 1, [1], closes_at)
 
     embed_entry = channel.messages[0]["embed"]
     assert embed_entry.title == "Book Club Election"
@@ -183,6 +189,7 @@ async def test_election_embed_posts_summary(monkeypatch):
     assert embed_entry.fields[0]["name"] == f"1. Book {expected_link}"
     assert embed_entry.fields[0]["value"].endswith("...")
     assert interaction.followup.messages[0]["content"] == "Election opened."
+    update_mock.assert_awaited_once_with(interaction.client, 1)
 
 
 @pytest.mark.asyncio
