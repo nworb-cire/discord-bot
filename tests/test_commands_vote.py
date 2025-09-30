@@ -14,42 +14,67 @@ settings = get_settings()
 async def test_record_votes_requires_open_election(monkeypatch):
     modal = BallotModal.__new__(BallotModal)
     modal.is_bookclub = False
-    monkeypatch.setattr("bot.commands.vote.get_open_election", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bot.commands.vote.get_open_election", AsyncMock(return_value=None)
+    )
     session = DummySession()
     monkeypatch.setattr("bot.commands.vote.async_session", lambda: session_cm(session))
 
+    update_mock = AsyncMock()
+    monkeypatch.setattr("bot.commands.vote.update_election_vote_reaction", update_mock)
+    interaction = SimpleNamespace(user=SimpleNamespace(id=1), client=SimpleNamespace())
+
     with pytest.raises(Exception) as excinfo:
-        await BallotModal.record_votes(modal, user_id=1, entries={})
+        await BallotModal.record_votes(modal, interaction, entries={})
 
     assert "Voting is not currently open" in str(excinfo.value)
+    update_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_record_votes_rejects_excess_total(monkeypatch):
     modal = BallotModal.__new__(BallotModal)
     modal.is_bookclub = False
-    monkeypatch.setattr("bot.commands.vote.get_open_election", AsyncMock(return_value=SimpleNamespace(id=1)))
+    monkeypatch.setattr(
+        "bot.commands.vote.get_open_election",
+        AsyncMock(return_value=SimpleNamespace(id=1)),
+    )
     session = DummySession()
     monkeypatch.setattr("bot.commands.vote.async_session", lambda: session_cm(session))
 
+    update_mock = AsyncMock()
+    monkeypatch.setattr("bot.commands.vote.update_election_vote_reaction", update_mock)
+    interaction = SimpleNamespace(user=SimpleNamespace(id=1), client=SimpleNamespace())
+
     with pytest.raises(Exception) as excinfo:
-        await BallotModal.record_votes(modal, user_id=1, entries={1: 3})
+        await BallotModal.record_votes(modal, interaction, entries={1: 3})
 
     assert "Total score exceeds" in str(excinfo.value)
+    update_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_record_votes_persists(monkeypatch):
     modal = BallotModal.__new__(BallotModal)
     modal.is_bookclub = True
-    monkeypatch.setattr("bot.commands.vote.get_open_election", AsyncMock(return_value=SimpleNamespace(id=7)))
+    monkeypatch.setattr(
+        "bot.commands.vote.get_open_election",
+        AsyncMock(return_value=SimpleNamespace(id=7)),
+    )
     session = DummySession(execute_results=[DummyResult(), DummyResult()])
     monkeypatch.setattr("bot.commands.vote.async_session", lambda: session_cm(session))
+    update_mock = AsyncMock()
+    monkeypatch.setattr("bot.commands.vote.update_election_vote_reaction", update_mock)
+    client = SimpleNamespace()
+    interaction = SimpleNamespace(user=SimpleNamespace(id=9), client=client)
 
-    await BallotModal.record_votes(modal, user_id=9, entries={1: 2.0, 2: 1.0})
+    election_id = await BallotModal.record_votes(
+        modal, interaction, entries={1: 2.0, 2: 1.0}
+    )
 
     assert len(session.executed) == 2
     assert session.commit_calls == 1
+    update_mock.assert_awaited_once_with(client, election_id)
 
 
 @pytest.mark.asyncio
@@ -67,7 +92,9 @@ async def test_on_submit_blocks_invalid_numbers(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_on_submit_records_votes(monkeypatch):
-    modal = BallotModal([SimpleNamespace(id=1, title="A"), SimpleNamespace(id=2, title="B")])
+    modal = BallotModal(
+        [SimpleNamespace(id=1, title="A"), SimpleNamespace(id=2, title="B")]
+    )
     modal.children[0].value = "2"
     modal.children[1].value = "3"
     modal.record_votes = AsyncMock()
@@ -76,6 +103,8 @@ async def test_on_submit_records_votes(monkeypatch):
     await modal.on_submit(interaction)
 
     modal.record_votes.assert_awaited_once()
+    assert modal.record_votes.await_args.args[0] is interaction
+    assert modal.record_votes.await_args.args[1] == {1: 2.0, 2: 3.0}
     assert interaction.response.messages[-1]["content"] == "Votes recorded."
 
 
@@ -106,7 +135,10 @@ async def test_vote_command_requires_nominations(monkeypatch):
 
     await ballot.vote(interaction)
 
-    assert interaction.response.messages[0]["content"] == "No nominations available for voting."
+    assert (
+        interaction.response.messages[0]["content"]
+        == "No nominations available for voting."
+    )
 
 
 @pytest.mark.asyncio
@@ -120,7 +152,9 @@ async def test_vote_command_opens_modal(monkeypatch):
         ]
     )
     monkeypatch.setattr("bot.commands.vote.async_session", lambda: session_cm(session))
-    interaction = DummyInteraction(user_roles=[SimpleNamespace(id=settings.role_highweight_id)])
+    interaction = DummyInteraction(
+        user_roles=[SimpleNamespace(id=settings.role_highweight_id)]
+    )
     ballot = Ballot(bot=SimpleNamespace())
 
     await ballot.vote(interaction)

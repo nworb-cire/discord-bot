@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from bot.config import get_settings
 from bot.db import Book, Election, Nomination, Vote, async_session
+from bot.reactions import update_election_vote_reaction
 
 settings = get_settings()
 
@@ -283,6 +285,20 @@ async def cast_vote(request: web.Request) -> web.Response:
             await session.execute(stmt)
 
         await session.commit()
+
+    try:
+        client = request.app["discord_client"]
+    except KeyError:
+        client = None
+
+    if client is not None:
+        try:
+            await update_election_vote_reaction(client, payload.election_id)
+        except Exception:  # pragma: no cover - defensive logging
+            log = logging.getLogger(__name__)
+            log.exception(
+                "Failed to update vote reaction for election %s", payload.election_id
+            )
 
     return web.Response(status=204)
 

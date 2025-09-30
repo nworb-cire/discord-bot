@@ -8,6 +8,7 @@ from sqlalchemy.future import select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Election, Vote
+from bot.reactions import update_election_vote_reaction
 from bot.utils import get_open_election, handle_interaction_errors, short_book_title
 
 log = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 )
             )
 
-    async def record_votes(self, user_id, entries):
+    async def record_votes(self, interaction: discord.Interaction, entries):
         max_score = settings.weight_inner if self.is_bookclub else settings.weight_outer
         async with async_session() as session:
             election = await get_open_election(session)
@@ -47,7 +48,7 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                     insert(Vote)
                     .values(
                         election_id=election.id,
-                        voter_discord_id=user_id,
+                        voter_discord_id=interaction.user.id,
                         book_id=book_id,
                         weight=score,
                     )
@@ -63,6 +64,13 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 await session.execute(stmt)
 
             await session.commit()
+            election_id = election.id
+
+        try:
+            await update_election_vote_reaction(interaction.client, election_id)
+        except Exception:  # pragma: no cover - defensive logging
+            log.exception("Failed to update vote reaction for election %s", election_id)
+        return election_id
 
     async def on_submit(self, inter: discord.Interaction):
         entries = {}
@@ -87,7 +95,7 @@ class BallotModal(discord.ui.Modal, title="Vote"):
                 )
                 return
         try:
-            await self.record_votes(inter.user.id, entries)
+            await self.record_votes(inter, entries)
         except Exception as e:
             log.info("vote_failed", extra={"user": str(inter.user), "error": str(e)})
             await inter.response.send_message(str(e), ephemeral=True)
