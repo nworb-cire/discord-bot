@@ -4,7 +4,7 @@ from sqlalchemy import update, select, func
 
 from bot.config import get_settings
 from bot.db import Election, Vote, Book
-from bot.utils import utcnow
+from bot.utils import format_vote_count, utcnow
 
 settings = get_settings()
 
@@ -42,7 +42,9 @@ async def close_and_tally(client, session, election, closed_by=None):
     )
     for idx, (book, votes) in enumerate(all_votes, start=1):
         embed.add_field(
-            name=f"{idx}. {book.title}", value=f"Votes: {votes:.1f}", inline=False
+            name=f"{idx}. {book.title}",
+            value=f"Votes: {format_vote_count(votes)}",
+            inline=False,
         )
     await client.get_channel(settings.bookclub_channel_id).send(embed=embed)
     await session.commit()

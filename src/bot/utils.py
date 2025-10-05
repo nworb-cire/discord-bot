@@ -2,6 +2,7 @@ import asyncio
 from contextlib import suppress
 from datetime import datetime, timezone
 from functools import wraps
+from math import isclose, isfinite
 from string import capwords
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 from zoneinfo import ZoneInfo
@@ -43,6 +44,17 @@ def short_book_title(title: str) -> str:
     head, *_ = title.split(":", 1)
     shortened = head.strip() or title.strip()
     return capwords(shortened)
+
+
+def format_vote_count(value: float | int) -> str:
+    """Render vote totals with integers shown plainly and decimals to 3 places."""
+
+    numeric = float(value)
+    if not isfinite(numeric):
+        return str(value)
+    if isclose(numeric, round(numeric), rel_tol=0.0, abs_tol=1e-9):
+        return str(int(round(numeric)))
+    return f"{numeric:.3f}"
 
 
 def parse_due_datetime(value: str) -> datetime:

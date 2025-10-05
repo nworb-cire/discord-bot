@@ -317,7 +317,7 @@ async def test_result_preview_lists_totals(monkeypatch):
     message = interaction.followup.messages[0]["content"]
     assert message.splitlines() == [
         "Beta Adventures: 3",
-        "Alpha: 1.5",
+        "Alpha: 1.500",
     ]
 
 

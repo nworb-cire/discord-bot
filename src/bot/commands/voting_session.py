@@ -14,6 +14,7 @@ from bot.reactions import update_election_vote_reaction
 from bot.election import close_and_tally, get_election_vote_totals
 from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
+    format_vote_count,
     get_open_election,
     handle_interaction_errors,
     nomination_message_url,
@@ -296,11 +297,6 @@ class VotingSession(commands.Cog):
             )
             books = {book.id: book for book in books_result.scalars().all()}
 
-        def _format(value: float) -> str:
-            text = f"{value:.1f}"
-            trimmed = text.rstrip("0").rstrip(".")
-            return trimmed or "0"
-
         summaries: list[tuple[float, str]] = []
         for book_id in ballot_ids:
             book = books.get(book_id)
@@ -310,7 +306,7 @@ class VotingSession(commands.Cog):
             summaries.append(
                 (
                     total,
-                    f"{short_book_title(book.title)}: {_format(total)}",
+                    f"{short_book_title(book.title)}: {format_vote_count(total)}",
                 )
             )
 
@@ -350,9 +346,10 @@ class VotingSession(commands.Cog):
             entries = await self._get_ballot_entries(session, book_ids, guild_id)
             entry_lookup = {entry[0].id: entry for entry in entries}
 
-            def _format(value: float) -> str:
+            def _format_score(value: float) -> str:
                 text = f"{value:.1f}"
-                return text.rstrip("0").rstrip(".")
+                trimmed = text.rstrip("0").rstrip(".")
+                return trimmed or "0"
 
             for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
                 entry = entry_lookup.get(bid)
@@ -367,7 +364,10 @@ class VotingSession(commands.Cog):
                 )
                 embed.add_field(
                     name=field_name,
-                    value=f"Score: {_format(score)} ({_format(votes)} votes + {reacts} seconds)",
+                    value=(
+                        f"Score: {_format_score(score)} "
+                        f"({format_vote_count(votes)} votes + {reacts} seconds)"
+                    ),
                     inline=False,
                 )
         await interaction.followup.send(embed=embed, ephemeral=True)
