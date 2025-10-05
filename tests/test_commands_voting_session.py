@@ -23,9 +23,10 @@ settings = get_settings()
 async def test_get_top_noms_returns_scores(monkeypatch):
     session = DummySession(
         execute_results=[
+            DummyResult(scalars=[]),
             DummyResult(
                 rows=[SimpleNamespace(book_id=1, reactions=2, vote_sum=1.5, score=3.5)]
-            )
+            ),
         ]
     )
     vs = VotingSession(bot=SimpleNamespace())
@@ -33,18 +34,20 @@ async def test_get_top_noms_returns_scores(monkeypatch):
 
     result = await vs.get_top_noms(session, limit=1)
 
-    assert result == [(1, 2, 1.5, 3.5)]
+    assert result == [(1, 2, 1.5, 3.5, 0)]
 
 
 @pytest.mark.asyncio
 async def test_get_top_noms_requires_seconding(monkeypatch):
-    session = DummySession(execute_results=[DummyResult(rows=[])])
+    session = DummySession(
+        execute_results=[DummyResult(scalars=[]), DummyResult(rows=[])]
+    )
     vs = VotingSession(bot=SimpleNamespace())
     monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
 
     await vs.get_top_noms(session, limit=0)
 
-    stmt = session.executed[0]
+    stmt = session.executed[1]
     clauses = list(stmt._where_criteria)
     assert any(
         getattr(clause.right, "value", None) == 0
@@ -52,6 +55,27 @@ async def test_get_top_noms_requires_seconding(monkeypatch):
         and "reactions" in str(clause.left)
         for clause in clauses
     ), "Ballot query should require at least one reaction"
+
+
+@pytest.mark.asyncio
+async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
+    session = DummySession(
+        execute_results=[
+            DummyResult(scalars=[[1, 2], [1], [1]]),
+            DummyResult(
+                rows=[
+                    SimpleNamespace(book_id=1, reactions=5, vote_sum=2.0, score=7.0),
+                    SimpleNamespace(book_id=2, reactions=3, vote_sum=1.0, score=4.0),
+                ]
+            ),
+        ]
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
+
+    result = await vs.get_top_noms(session, limit=0)
+
+    assert result == [(2, 3, 1.0, 4.0, 1)]
 
 
 @pytest.mark.asyncio
@@ -88,7 +112,7 @@ async def test_open_voting_creates_election(monkeypatch):
     monkeypatch.setattr(
         vs,
         "get_top_noms",
-        AsyncMock(return_value=[(1, 1, 1.0, 2.0), (2, 2, 2.0, 4.0)]),
+        AsyncMock(return_value=[(1, 1, 1.0, 2.0, 1), (2, 2, 2.0, 4.0, 2)]),
     )
     fake_embed = AsyncMock()
     monkeypatch.setattr(vs, "_election_embed", fake_embed)
@@ -103,6 +127,15 @@ async def test_open_voting_creates_election(monkeypatch):
     assert election.ballot == [1, 2]
     assert election.closes_at == fixed_now + timedelta(hours=4)
     fake_embed.assert_awaited_once()
+    args, kwargs = fake_embed.await_args
+    assert args[:4] == (
+        interaction,
+        election.id,
+        [1, 2],
+        fixed_now + timedelta(hours=4),
+    )
+    assert args[4] == {2}
+    assert kwargs == {}
     assert session.commit_calls == 1
 
 
@@ -117,7 +150,7 @@ async def test_open_voting_accepts_custom_ballot_size(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
-    ballot_mock = AsyncMock(return_value=[(1, 1, 0.0, 1.0)])
+    ballot_mock = AsyncMock(return_value=[(1, 1, 0.0, 1.0, 0)])
     monkeypatch.setattr(vs, "get_top_noms", ballot_mock)
     monkeypatch.setattr(vs, "_election_embed", AsyncMock())
     monkeypatch.setattr(
@@ -190,6 +223,36 @@ async def test_election_embed_posts_summary(monkeypatch):
     assert embed_entry.fields[0]["value"].endswith("...")
     assert interaction.followup.messages[0]["content"] == "Election opened."
     update_mock.assert_awaited_once_with(interaction.client, 1)
+
+
+@pytest.mark.asyncio
+async def test_election_embed_marks_third_appearance(monkeypatch):
+    session = DummySession(
+        execute_results=[
+            DummyResult(scalars=[SimpleNamespace(book_id=1, message_id=77)]),
+            DummyResult(scalars=[SimpleNamespace(id=1, title="Novel", summary=None)]),
+        ],
+        get_results={1: SimpleNamespace(id=1, ballot_message_id=None)},
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.update_election_vote_reaction", AsyncMock()
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    channel = DummyChannel(2)
+    interaction = DummyInteraction(
+        client=SimpleNamespace(get_channel=lambda _cid: channel)
+    )
+    interaction.guild_id = 321
+    closes_at = datetime(2024, 5, 1, tzinfo=timezone.utc)
+
+    await vs._election_embed(interaction, 1, [1], closes_at, {1})
+
+    embed_entry = channel.messages[0]["embed"]
+    expected_link = f"https://discord.com/channels/321/{settings.nom_channel_id}/77"
+    assert embed_entry.fields[0]["name"] == f"1. Novel * {expected_link}"
 
 
 @pytest.mark.asyncio
@@ -368,7 +431,9 @@ async def test_ballot_preview_sends_embed(monkeypatch):
     )
     vs = VotingSession(bot=SimpleNamespace())
     monkeypatch.setattr(
-        vs, "get_top_noms", AsyncMock(return_value=[(1, 2, 1.0, 3.0), (2, 1, 0.5, 1.5)])
+        vs,
+        "get_top_noms",
+        AsyncMock(return_value=[(1, 2, 1.0, 3.0, 2), (2, 1, 0.5, 1.5, 0)]),
     )
     interaction = DummyInteraction()
     interaction.guild_id = 123
@@ -380,7 +445,7 @@ async def test_ballot_preview_sends_embed(monkeypatch):
     expected_preview_link = (
         f"https://discord.com/channels/123/{settings.nom_channel_id}/101"
     )
-    assert embed.fields[0]["name"] == f"1. Book One {expected_preview_link}"
+    assert embed.fields[0]["name"] == f"1. Book One * {expected_preview_link}"
     assert embed.fields[0]["value"] == "Score: 3 (1 votes + 2 seconds)"
 
 

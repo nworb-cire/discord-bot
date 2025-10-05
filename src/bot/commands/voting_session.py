@@ -1,5 +1,6 @@
 import asyncio
 from datetime import timedelta, datetime
+from collections import defaultdict
 from typing import Optional
 
 import discord
@@ -109,7 +110,7 @@ class VotingSession(commands.Cog):
 
     async def get_top_noms(
         self, session, limit: int = 0
-    ) -> list[tuple[int, int, float, float]]:
+    ) -> list[tuple[int, int, float, float, int]]:
         await self.update_all_nominations(session)
         sub_votes = (
             select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
@@ -122,6 +123,22 @@ class VotingSession(commands.Cog):
             .where(Election.winner.is_not(None))
             .scalar_subquery()
         )
+        previous_ballots_result = await session.execute(
+            select(Election.ballot).where(Election.winner.is_not(None))
+        )
+        appearance_counts: dict[int, int] = defaultdict(int)
+        for ballot in previous_ballots_result.scalars().all():
+            if not ballot:
+                continue
+            for idx in ballot:
+                try:
+                    book_id = int(idx)
+                except (TypeError, ValueError):
+                    continue
+                appearance_counts[book_id] += 1
+        disqualified_ids = [
+            bid for bid, count in appearance_counts.items() if count >= 3
+        ]
         stmt = (
             select(
                 Book.id.label("book_id"),
@@ -140,18 +157,27 @@ class VotingSession(commands.Cog):
         )
         if not settings.is_staging:
             stmt = stmt.where(func.coalesce(nominations_table.c.reactions, 0) > 0)
+        if disqualified_ids:
+            stmt = stmt.where(~Book.id.in_(disqualified_ids))
         if limit > 0:
             stmt = stmt.limit(limit)
         result = await session.execute(stmt)
-        return [
-            (
-                int(row.book_id),
-                int(row.reactions),
-                float(row.vote_sum) if row.vote_sum is not None else 0.0,
-                float(row.score) if row.score is not None else 0.0,
+        entries: list[tuple[int, int, float, float, int]] = []
+        for row in result.all():
+            book_id = int(row.book_id)
+            prior_appearances = appearance_counts.get(book_id, 0)
+            if prior_appearances >= 3:
+                continue
+            entries.append(
+                (
+                    book_id,
+                    int(row.reactions),
+                    float(row.vote_sum) if row.vote_sum is not None else 0.0,
+                    float(row.score) if row.score is not None else 0.0,
+                    prior_appearances,
+                )
             )
-            for row in result.all()
-        ]
+        return entries
 
     @app_commands.command(
         name="open_voting",
@@ -179,12 +205,13 @@ class VotingSession(commands.Cog):
                 return
 
             ballot = await self.get_top_noms(session, limit=ballot_size)
-            ballot_ids = [bid for bid, _, _, _ in ballot]
+            ballot_ids = [entry[0] for entry in ballot]
             if not ballot:
                 await interaction.followup.send(
                     "No nominations available for voting.", ephemeral=True
                 )
                 return
+            third_appearance_ids = {entry[0] for entry in ballot if entry[4] == 2}
             closes_at = now + timedelta(hours=hours)
             election = Election(
                 opener_discord_id=interaction.user.id,
@@ -195,7 +222,13 @@ class VotingSession(commands.Cog):
             session.add(election)
             await session.commit()
             await session.refresh(election)
-        await self._election_embed(interaction, election.id, ballot_ids, closes_at)
+        await self._election_embed(
+            interaction,
+            election.id,
+            ballot_ids,
+            closes_at,
+            third_appearance_ids,
+        )
 
     async def _election_embed(
         self,
@@ -203,6 +236,7 @@ class VotingSession(commands.Cog):
         election_id: int,
         ballot: list[int],
         closes_at: datetime,
+        third_appearance_ids: Optional[set[int]] = None,
     ):
         closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
@@ -215,6 +249,8 @@ class VotingSession(commands.Cog):
             entries = await self._get_ballot_entries(session, ballot, guild_id)
             for idx, (book, _nomination, jump_url) in enumerate(entries, start=1):
                 title = short_book_title(book.title)
+                if third_appearance_ids and book.id in third_appearance_ids:
+                    title += " *"
                 field_name = (
                     f"{idx}. {title} {jump_url}"
                     if jump_url is not None
@@ -341,7 +377,7 @@ class VotingSession(commands.Cog):
                 )
                 return
             embed = discord.Embed(title="Upcoming Ballot Preview")
-            book_ids = [bid for bid, _, _, _ in ballot]
+            book_ids = [entry[0] for entry in ballot]
             guild_id = self._resolve_guild_id(interaction)
             entries = await self._get_ballot_entries(session, book_ids, guild_id)
             entry_lookup = {entry[0].id: entry for entry in entries}
@@ -351,12 +387,16 @@ class VotingSession(commands.Cog):
                 trimmed = text.rstrip("0").rstrip(".")
                 return trimmed or "0"
 
-            for idx, (bid, reacts, votes, score) in enumerate(ballot, start=1):
+            for idx, (bid, reacts, votes, score, prior_appearances) in enumerate(
+                ballot, start=1
+            ):
                 entry = entry_lookup.get(bid)
                 if entry is None:
                     continue
                 book, _nomination, jump_url = entry
                 title = short_book_title(book.title)
+                if prior_appearances == 2:
+                    title += " *"
                 field_name = (
                     f"{idx}. {title} {jump_url}"
                     if jump_url is not None
