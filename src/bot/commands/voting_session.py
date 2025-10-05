@@ -1,6 +1,5 @@
 import asyncio
 from datetime import timedelta, datetime
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -8,7 +7,7 @@ import discord
 from discord import app_commands, Permissions
 from discord.ext import commands
 from loguru import logger
-from sqlalchemy import select, func, literal_column
+from sqlalchemy import select, func, literal_column, Integer, cast
 
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
@@ -146,22 +145,26 @@ class VotingSession(commands.Cog):
             .where(Election.winner.is_not(None))
             .scalar_subquery()
         )
-        previous_ballots_result = await session.execute(
-            select(Election.ballot).where(Election.winner.is_not(None))
+        ballot_entries = (
+            select(
+                cast(func.json_array_elements_text(Election.ballot), Integer).label(
+                    "book_id"
+                )
+            )
+            .select_from(Election)
+            .where(Election.winner.is_not(None))
+            .cte("ballot_entries")
         )
-        appearance_counts: dict[int, int] = defaultdict(int)
-        for ballot in previous_ballots_result.scalars().all():
-            if not ballot:
-                continue
-            for idx in ballot:
-                try:
-                    book_id = int(idx)
-                except (TypeError, ValueError):
-                    continue
-                appearance_counts[book_id] += 1
-        disqualified_ids = [
-            bid for bid, count in appearance_counts.items() if count >= 3
-        ]
+        appearance_totals = (
+            select(
+                ballot_entries.c.book_id,
+                func.count().label("appearance_count"),
+            )
+            .group_by(ballot_entries.c.book_id)
+            .cte("appearance_totals")
+        )
+        appearance_count_expr = func.coalesce(appearance_totals.c.appearance_count, 0)
+        max_appearances = settings.max_election_appearances
         stmt = (
             select(
                 Book.id.label("book_id"),
@@ -171,25 +174,26 @@ class VotingSession(commands.Cog):
                     func.coalesce(nominations_table.c.reactions, 0)
                     + func.coalesce(sub_votes.c.vote_sum, 0)
                 ).label("score"),
+                appearance_count_expr.label("appearance_count"),
             )
             .select_from(Book)
             .outerjoin(nominations_table, nominations_table.c.book_id == Book.id)
             .outerjoin(sub_votes, sub_votes.c.book_id == Book.id)
+            .outerjoin(appearance_totals, appearance_totals.c.book_id == Book.id)
             .where(~Book.id.in_(winner_subq))
             .order_by(literal_column("score").desc(), Book.created_at)
         )
         if not settings.is_staging:
             stmt = stmt.where(func.coalesce(nominations_table.c.reactions, 0) > 0)
-        if disqualified_ids:
-            stmt = stmt.where(~Book.id.in_(disqualified_ids))
+        stmt = stmt.where(appearance_count_expr < max_appearances)
         if limit > 0:
             stmt = stmt.limit(limit)
         result = await session.execute(stmt)
         entries: list[BallotNominee] = []
         for row in result.all():
             book_id = int(row.book_id)
-            prior_appearances = appearance_counts.get(book_id, 0)
-            if prior_appearances >= 3:
+            prior_appearances = int(getattr(row, "appearance_count", 0) or 0)
+            if prior_appearances >= max_appearances:
                 continue
             entries.append(
                 BallotNominee(
@@ -234,8 +238,13 @@ class VotingSession(commands.Cog):
                     "No nominations available for voting.", ephemeral=True
                 )
                 return
-            third_appearance_ids = {
-                nominee.book_id for nominee in ballot if nominee.prior_appearances == 2
+            max_appearances = settings.max_election_appearances
+            star_threshold = max_appearances - 1 if max_appearances > 0 else None
+            last_appearance_ids = {
+                nominee.book_id
+                for nominee in ballot
+                if star_threshold is not None
+                and nominee.prior_appearances == star_threshold
             }
             closes_at = now + timedelta(hours=hours)
             election = Election(
@@ -252,7 +261,7 @@ class VotingSession(commands.Cog):
             election.id,
             ballot_ids,
             closes_at,
-            third_appearance_ids,
+            last_appearance_ids,
         )
 
     async def _election_embed(
@@ -261,7 +270,7 @@ class VotingSession(commands.Cog):
         election_id: int,
         ballot: list[int],
         closes_at: datetime,
-        third_appearance_ids: Optional[set[int]] = None,
+        last_appearance_ids: Optional[set[int]] = None,
     ):
         closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
@@ -275,7 +284,7 @@ class VotingSession(commands.Cog):
             for idx, entry in enumerate(entries, start=1):
                 book = entry.book
                 title = short_book_title(book.title)
-                if third_appearance_ids and book.id in third_appearance_ids:
+                if last_appearance_ids and book.id in last_appearance_ids:
                     title += " *"
                 field_name = (
                     f"{idx}. {title} {entry.jump_url}"
@@ -407,6 +416,8 @@ class VotingSession(commands.Cog):
             guild_id = self._resolve_guild_id(interaction)
             entries = await self._get_ballot_entries(session, book_ids, guild_id)
             entry_lookup = {entry.book.id: entry for entry in entries}
+            max_appearances = settings.max_election_appearances
+            star_threshold = max_appearances - 1 if max_appearances > 0 else None
 
             def _format_score(value: float) -> str:
                 text = f"{value:.1f}"
@@ -420,7 +431,10 @@ class VotingSession(commands.Cog):
                 book = entry.book
                 jump_url = entry.jump_url
                 title = short_book_title(book.title)
-                if nominee.prior_appearances == 2:
+                if (
+                    star_threshold is not None
+                    and nominee.prior_appearances == star_threshold
+                ):
                     title += " *"
                 field_name = (
                     f"{idx}. {title} {jump_url}"

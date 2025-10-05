@@ -23,10 +23,17 @@ settings = get_settings()
 async def test_get_top_noms_returns_scores(monkeypatch):
     session = DummySession(
         execute_results=[
-            DummyResult(scalars=[]),
             DummyResult(
-                rows=[SimpleNamespace(book_id=1, reactions=2, vote_sum=1.5, score=3.5)]
-            ),
+                rows=[
+                    SimpleNamespace(
+                        book_id=1,
+                        reactions=2,
+                        vote_sum=1.5,
+                        score=3.5,
+                        appearance_count=0,
+                    )
+                ]
+            )
         ]
     )
     vs = VotingSession(bot=SimpleNamespace())
@@ -39,15 +46,13 @@ async def test_get_top_noms_returns_scores(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_top_noms_requires_seconding(monkeypatch):
-    session = DummySession(
-        execute_results=[DummyResult(scalars=[]), DummyResult(rows=[])]
-    )
+    session = DummySession(execute_results=[DummyResult(rows=[])])
     vs = VotingSession(bot=SimpleNamespace())
     monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
 
     await vs.get_top_noms(session, limit=0)
 
-    stmt = session.executed[1]
+    stmt = session.executed[0]
     clauses = list(stmt._where_criteria)
     assert any(
         getattr(clause.right, "value", None) == 0
@@ -61,11 +66,22 @@ async def test_get_top_noms_requires_seconding(monkeypatch):
 async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
     session = DummySession(
         execute_results=[
-            DummyResult(scalars=[[1, 2], [1], [1]]),
             DummyResult(
                 rows=[
-                    SimpleNamespace(book_id=1, reactions=5, vote_sum=2.0, score=7.0),
-                    SimpleNamespace(book_id=2, reactions=3, vote_sum=1.0, score=4.0),
+                    SimpleNamespace(
+                        book_id=1,
+                        reactions=5,
+                        vote_sum=2.0,
+                        score=7.0,
+                        appearance_count=settings.max_election_appearances,
+                    ),
+                    SimpleNamespace(
+                        book_id=2,
+                        reactions=3,
+                        vote_sum=1.0,
+                        score=4.0,
+                        appearance_count=1,
+                    ),
                 ]
             ),
         ]
@@ -103,22 +119,17 @@ async def test_open_voting_creates_election(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
+    ballot_values = [
+        BallotNominee(1, 1, 1.0, 2.0, 1),
+        BallotNominee(2, 2, 2.0, 4.0, settings.max_election_appearances - 1),
+    ]
     monkeypatch.setattr(
         "bot.commands.voting_session.async_session", lambda: session_cm(session)
     )
     monkeypatch.setattr(
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
-    monkeypatch.setattr(
-        vs,
-        "get_top_noms",
-        AsyncMock(
-            return_value=[
-                BallotNominee(1, 1, 1.0, 2.0, 1),
-                BallotNominee(2, 2, 2.0, 4.0, 2),
-            ]
-        ),
-    )
+    monkeypatch.setattr(vs, "get_top_noms", AsyncMock(return_value=ballot_values))
     fake_embed = AsyncMock()
     monkeypatch.setattr(vs, "_election_embed", fake_embed)
     fixed_now = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -139,7 +150,12 @@ async def test_open_voting_creates_election(monkeypatch):
         [1, 2],
         fixed_now + timedelta(hours=4),
     )
-    assert args[4] == {2}
+    expected_starred = {
+        nominee.book_id
+        for nominee in ballot_values
+        if nominee.prior_appearances == settings.max_election_appearances - 1
+    }
+    assert args[4] == expected_starred
     assert kwargs == {}
     assert session.commit_calls == 1
 
@@ -435,15 +451,23 @@ async def test_ballot_preview_sends_embed(monkeypatch):
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
     vs = VotingSession(bot=SimpleNamespace())
-    monkeypatch.setattr(
-        vs,
-        "get_top_noms",
-        AsyncMock(
-            return_value=[
-                BallotNominee(1, 2, 1.0, 3.0, 2),
-                BallotNominee(2, 1, 0.5, 1.5, 0),
-            ]
+    star_threshold = (
+        settings.max_election_appearances - 1
+        if settings.max_election_appearances > 1
+        else None
+    )
+    ballot_preview_values = [
+        BallotNominee(
+            1,
+            2,
+            1.0,
+            3.0,
+            star_threshold if star_threshold is not None else 0,
         ),
+        BallotNominee(2, 1, 0.5, 1.5, 0),
+    ]
+    monkeypatch.setattr(
+        vs, "get_top_noms", AsyncMock(return_value=ballot_preview_values)
     )
     interaction = DummyInteraction()
     interaction.guild_id = 123
@@ -455,7 +479,10 @@ async def test_ballot_preview_sends_embed(monkeypatch):
     expected_preview_link = (
         f"https://discord.com/channels/123/{settings.nom_channel_id}/101"
     )
-    assert embed.fields[0]["name"] == f"1. Book One * {expected_preview_link}"
+    star_suffix = " *" if star_threshold is not None else ""
+    assert (
+        embed.fields[0]["name"] == f"1. Book One{star_suffix} {expected_preview_link}"
+    )
     assert embed.fields[0]["value"] == "Score: 3 (1 votes + 2 seconds)"
 
 

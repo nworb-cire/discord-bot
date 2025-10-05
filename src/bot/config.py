@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     redis_url: str = Field(alias="REDIS_URL")
     openai_key: str = Field(alias="OPENAI_API_KEY")
     is_staging: bool = Field(alias="STAGING", default=False)
+    max_election_appearances: int = Field(
+        default=3, alias="BOOK_MAX_ELECTION_APPEARANCES"
+    )
 
     model_config = SettingsConfigDict(env_file=".env")
 
