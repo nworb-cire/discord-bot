@@ -258,6 +258,70 @@ async def test_close_voting_handles_no_votes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_result_preview_handles_no_election(monkeypatch):
+    interaction = DummyInteraction()
+    session = DummySession()
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=None),
+    )
+
+    await vs.result_preview(interaction)
+
+    assert interaction.response.deferred is True
+    assert interaction.followup.messages[0]["content"] == "No open election found."
+
+
+@pytest.mark.asyncio
+async def test_result_preview_lists_totals(monkeypatch):
+    interaction = DummyInteraction()
+    election = SimpleNamespace(id=3, ballot=[2, 1])
+    vs = VotingSession(bot=SimpleNamespace())
+    session = DummySession(
+        execute_results=[
+            DummyResult(
+                rows=[
+                    (
+                        SimpleNamespace(id=2, title="Beta Adventures"),
+                        3.0,
+                    ),
+                    (
+                        SimpleNamespace(id=1, title="Alpha: Book"),
+                        1.5,
+                    ),
+                ]
+            ),
+            DummyResult(
+                scalars=[
+                    SimpleNamespace(id=1, title="Alpha: Book"),
+                    SimpleNamespace(id=2, title="Beta Adventures"),
+                ]
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=election),
+    )
+
+    await vs.result_preview(interaction)
+
+    assert interaction.response.deferred is True
+    message = interaction.followup.messages[0]["content"]
+    assert message.splitlines() == [
+        "Beta Adventures: 3",
+        "Alpha: 1.5",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_ballot_preview_requires_no_open_election(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()

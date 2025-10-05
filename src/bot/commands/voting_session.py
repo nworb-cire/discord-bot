@@ -11,7 +11,7 @@ from sqlalchemy import select, func, literal_column
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
 from bot.reactions import update_election_vote_reaction
-from bot.election import close_and_tally
+from bot.election import close_and_tally, get_election_vote_totals
 from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
     get_open_election,
@@ -267,6 +267,62 @@ class VotingSession(commands.Cog):
             )
         else:
             await interaction.response.send_message("No votes were cast.")
+
+    @app_commands.command(
+        name="result_preview",
+        description="Preview the current vote totals for the open election",
+    )
+    @app_commands.default_permissions(Permissions(manage_roles=True))
+    @handle_interaction_errors()
+    async def result_preview(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        async with async_session() as session:
+            election = await get_open_election(session)
+            if not election:
+                await interaction.followup.send(
+                    "No open election found.", ephemeral=True
+                )
+                return
+            ballot_ids = list(election.ballot or [])
+            if not ballot_ids:
+                await interaction.followup.send(
+                    "The open election has no ballot.", ephemeral=True
+                )
+                return
+            totals_rows = await get_election_vote_totals(session, election.id)
+            totals = {book.id: votes for book, votes in totals_rows}
+            books_result = await session.execute(
+                select(Book).where(Book.id.in_(ballot_ids))
+            )
+            books = {book.id: book for book in books_result.scalars().all()}
+
+        def _format(value: float) -> str:
+            text = f"{value:.1f}"
+            trimmed = text.rstrip("0").rstrip(".")
+            return trimmed or "0"
+
+        summaries: list[tuple[float, str]] = []
+        for book_id in ballot_ids:
+            book = books.get(book_id)
+            if not book:
+                continue
+            total = totals.get(book_id, 0.0)
+            summaries.append(
+                (
+                    total,
+                    f"{short_book_title(book.title)}: {_format(total)}",
+                )
+            )
+
+        if not summaries:
+            await interaction.followup.send(
+                "No eligible books found for the open election.", ephemeral=True
+            )
+            return
+
+        summaries.sort(key=lambda item: item[0], reverse=True)
+        content = "\n".join(item[1] for item in summaries)
+        await interaction.followup.send(content, ephemeral=True)
 
     @app_commands.command(
         name="ballot_preview",

@@ -7,14 +7,6 @@ from unittest.mock import AsyncMock
 from bot import election as election_mod
 
 
-class _FakeResult:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def all(self):
-        return list(self._rows)
-
-
 def test_close_and_tally_announces_winner(monkeypatch):
     async def _run():
         book = SimpleNamespace(id=1, title="Book A")
@@ -22,17 +14,28 @@ def test_close_and_tally_announces_winner(monkeypatch):
         channel = SimpleNamespace(send=AsyncMock())
         client = SimpleNamespace(get_channel=lambda _: channel)
         session = SimpleNamespace()
-        session.execute = AsyncMock(side_effect=[None, _FakeResult([(book, 3.5)])])
+        session.execute = AsyncMock(return_value=None)
         session.commit = AsyncMock()
 
-        monkeypatch.setattr(election_mod, "utcnow", lambda: datetime(2024, 1, 1, tzinfo=timezone.utc))
-        monkeypatch.setattr(election_mod, "settings", SimpleNamespace(bookclub_channel_id=99))
+        monkeypatch.setattr(
+            election_mod, "utcnow", lambda: datetime(2024, 1, 1, tzinfo=timezone.utc)
+        )
+        monkeypatch.setattr(
+            election_mod, "settings", SimpleNamespace(bookclub_channel_id=99)
+        )
+        monkeypatch.setattr(
+            election_mod,
+            "get_election_vote_totals",
+            AsyncMock(return_value=[(book, 3.5)]),
+        )
 
-        winner = await election_mod.close_and_tally(client, session, election, closed_by=100)
+        winner = await election_mod.close_and_tally(
+            client, session, election, closed_by=100
+        )
 
         assert winner is book
         assert election.winner == book.id
-        assert session.execute.await_count == 2
+        assert session.execute.await_count == 1
         assert session.commit.await_count == 2
 
         embed = channel.send.await_args.kwargs["embed"]
@@ -51,11 +54,20 @@ def test_close_and_tally_handles_no_votes(monkeypatch):
         channel = SimpleNamespace(send=AsyncMock())
         client = SimpleNamespace(get_channel=lambda _: channel)
         session = SimpleNamespace()
-        session.execute = AsyncMock(side_effect=[None, _FakeResult([])])
+        session.execute = AsyncMock(return_value=None)
         session.commit = AsyncMock()
 
-        monkeypatch.setattr(election_mod, "utcnow", lambda: datetime(2024, 1, 1, tzinfo=timezone.utc))
-        monkeypatch.setattr(election_mod, "settings", SimpleNamespace(bookclub_channel_id=99))
+        monkeypatch.setattr(
+            election_mod, "utcnow", lambda: datetime(2024, 1, 1, tzinfo=timezone.utc)
+        )
+        monkeypatch.setattr(
+            election_mod, "settings", SimpleNamespace(bookclub_channel_id=99)
+        )
+        monkeypatch.setattr(
+            election_mod,
+            "get_election_vote_totals",
+            AsyncMock(return_value=[]),
+        )
 
         winner = await election_mod.close_and_tally(client, session, election)
 
