@@ -1,6 +1,7 @@
 services:
   bot:
     build: .
+    restart: unless-stopped
     env_file: .env
     depends_on:
       - db
@@ -11,6 +12,7 @@ services:
 
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: bookclub
       POSTGRES_PASSWORD: bookclub
@@ -26,6 +28,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     volumes:
       - redisdata:/data
 
@@ -38,7 +41,7 @@ services:
       - ./migrations:/app/migrations
       - ./alembic.ini:/app/alembic.ini
     command: "alembic upgrade head"
-    restart: "no"
+    restart: unless-stopped
 
 volumes:
   pgdata:
