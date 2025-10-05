@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta, datetime
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Optional
 
 import discord
@@ -26,6 +27,28 @@ from bot.utils import (
 settings = get_settings()
 
 
+@dataclass(slots=True)
+class BallotNominee:
+    book_id: int
+    reactions: int
+    vote_sum: float
+    score: float
+    prior_appearances: int
+
+
+@dataclass(slots=True)
+class BallotEntryDetails:
+    book: Book
+    nomination: Optional[Nomination]
+    jump_url: Optional[str]
+
+
+@dataclass(slots=True)
+class VoteSummary:
+    total_votes: float
+    text: str
+
+
 class VotingSession(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -43,7 +66,7 @@ class VotingSession(commands.Cog):
         session,
         ballot_ids: list[int],
         guild_id: Optional[int],
-    ) -> list[tuple[Book, Optional[Nomination], Optional[str]]]:
+    ) -> list[BallotEntryDetails]:
         if not ballot_ids:
             return []
 
@@ -59,7 +82,7 @@ class VotingSession(commands.Cog):
         )
         books_by_id = {book.id: book for book in books_result.scalars()}
 
-        entries: list[tuple[Book, Optional[Nomination], Optional[str]]] = []
+        entries: list[BallotEntryDetails] = []
         for bid in ballot_ids:
             book = books_by_id.get(bid)
             if not book:
@@ -70,7 +93,9 @@ class VotingSession(commands.Cog):
                 if nomination
                 else None
             )
-            entries.append((book, nomination, jump_url))
+            entries.append(
+                BallotEntryDetails(book=book, nomination=nomination, jump_url=jump_url)
+            )
         return entries
 
     async def get_reacts_for_nomination(self, nomination: Nomination) -> int:
@@ -108,9 +133,7 @@ class VotingSession(commands.Cog):
         await asyncio.gather(*(update_nom(n) for n in nominations))
         await session.commit()
 
-    async def get_top_noms(
-        self, session, limit: int = 0
-    ) -> list[tuple[int, int, float, float, int]]:
+    async def get_top_noms(self, session, limit: int = 0) -> list[BallotNominee]:
         await self.update_all_nominations(session)
         sub_votes = (
             select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
@@ -162,19 +185,19 @@ class VotingSession(commands.Cog):
         if limit > 0:
             stmt = stmt.limit(limit)
         result = await session.execute(stmt)
-        entries: list[tuple[int, int, float, float, int]] = []
+        entries: list[BallotNominee] = []
         for row in result.all():
             book_id = int(row.book_id)
             prior_appearances = appearance_counts.get(book_id, 0)
             if prior_appearances >= 3:
                 continue
             entries.append(
-                (
-                    book_id,
-                    int(row.reactions),
-                    float(row.vote_sum) if row.vote_sum is not None else 0.0,
-                    float(row.score) if row.score is not None else 0.0,
-                    prior_appearances,
+                BallotNominee(
+                    book_id=book_id,
+                    reactions=int(row.reactions),
+                    vote_sum=float(row.vote_sum) if row.vote_sum is not None else 0.0,
+                    score=float(row.score) if row.score is not None else 0.0,
+                    prior_appearances=prior_appearances,
                 )
             )
         return entries
@@ -205,13 +228,15 @@ class VotingSession(commands.Cog):
                 return
 
             ballot = await self.get_top_noms(session, limit=ballot_size)
-            ballot_ids = [entry[0] for entry in ballot]
+            ballot_ids = [nominee.book_id for nominee in ballot]
             if not ballot:
                 await interaction.followup.send(
                     "No nominations available for voting.", ephemeral=True
                 )
                 return
-            third_appearance_ids = {entry[0] for entry in ballot if entry[4] == 2}
+            third_appearance_ids = {
+                nominee.book_id for nominee in ballot if nominee.prior_appearances == 2
+            }
             closes_at = now + timedelta(hours=hours)
             election = Election(
                 opener_discord_id=interaction.user.id,
@@ -247,13 +272,14 @@ class VotingSession(commands.Cog):
         async with async_session() as session:
             guild_id = self._resolve_guild_id(interaction)
             entries = await self._get_ballot_entries(session, ballot, guild_id)
-            for idx, (book, _nomination, jump_url) in enumerate(entries, start=1):
+            for idx, entry in enumerate(entries, start=1):
+                book = entry.book
                 title = short_book_title(book.title)
                 if third_appearance_ids and book.id in third_appearance_ids:
                     title += " *"
                 field_name = (
-                    f"{idx}. {title} {jump_url}"
-                    if jump_url is not None
+                    f"{idx}. {title} {entry.jump_url}"
+                    if entry.jump_url is not None
                     else f"{idx}. {title}"
                 )
                 summary = book.summary or "No summary available."
@@ -333,16 +359,16 @@ class VotingSession(commands.Cog):
             )
             books = {book.id: book for book in books_result.scalars().all()}
 
-        summaries: list[tuple[float, str]] = []
+        summaries: list[VoteSummary] = []
         for book_id in ballot_ids:
             book = books.get(book_id)
             if not book:
                 continue
             total = totals.get(book_id, 0.0)
             summaries.append(
-                (
-                    total,
-                    f"{short_book_title(book.title)}: {format_vote_count(total)}",
+                VoteSummary(
+                    total_votes=total,
+                    text=f"{short_book_title(book.title)}: {format_vote_count(total)}",
                 )
             )
 
@@ -352,8 +378,8 @@ class VotingSession(commands.Cog):
             )
             return
 
-        summaries.sort(key=lambda item: item[0], reverse=True)
-        content = "\n".join(item[1] for item in summaries)
+        summaries.sort(key=lambda item: item.total_votes, reverse=True)
+        content = "\n".join(item.text for item in summaries)
         await interaction.followup.send(content, ephemeral=True)
 
     @app_commands.command(
@@ -377,25 +403,24 @@ class VotingSession(commands.Cog):
                 )
                 return
             embed = discord.Embed(title="Upcoming Ballot Preview")
-            book_ids = [entry[0] for entry in ballot]
+            book_ids = [nominee.book_id for nominee in ballot]
             guild_id = self._resolve_guild_id(interaction)
             entries = await self._get_ballot_entries(session, book_ids, guild_id)
-            entry_lookup = {entry[0].id: entry for entry in entries}
+            entry_lookup = {entry.book.id: entry for entry in entries}
 
             def _format_score(value: float) -> str:
                 text = f"{value:.1f}"
                 trimmed = text.rstrip("0").rstrip(".")
                 return trimmed or "0"
 
-            for idx, (bid, reacts, votes, score, prior_appearances) in enumerate(
-                ballot, start=1
-            ):
-                entry = entry_lookup.get(bid)
+            for idx, nominee in enumerate(ballot, start=1):
+                entry = entry_lookup.get(nominee.book_id)
                 if entry is None:
                     continue
-                book, _nomination, jump_url = entry
+                book = entry.book
+                jump_url = entry.jump_url
                 title = short_book_title(book.title)
-                if prior_appearances == 2:
+                if nominee.prior_appearances == 2:
                     title += " *"
                 field_name = (
                     f"{idx}. {title} {jump_url}"
@@ -405,8 +430,8 @@ class VotingSession(commands.Cog):
                 embed.add_field(
                     name=field_name,
                     value=(
-                        f"Score: {_format_score(score)} "
-                        f"({format_vote_count(votes)} votes + {reacts} seconds)"
+                        f"Score: {_format_score(nominee.score)} "
+                        f"({format_vote_count(nominee.vote_sum)} votes + {nominee.reactions} seconds)"
                     ),
                     inline=False,
                 )

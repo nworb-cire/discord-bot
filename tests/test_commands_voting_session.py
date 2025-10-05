@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bot.commands.voting_session import VotingSession
+from bot.commands.voting_session import BallotNominee, VotingSession
 from bot.config import get_settings
 from bot.db import Election
 from bot.utils import NOMINATION_CANCEL_EMOJI
@@ -34,7 +34,7 @@ async def test_get_top_noms_returns_scores(monkeypatch):
 
     result = await vs.get_top_noms(session, limit=1)
 
-    assert result == [(1, 2, 1.5, 3.5, 0)]
+    assert result == [BallotNominee(1, 2, 1.5, 3.5, 0)]
 
 
 @pytest.mark.asyncio
@@ -75,7 +75,7 @@ async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
 
     result = await vs.get_top_noms(session, limit=0)
 
-    assert result == [(2, 3, 1.0, 4.0, 1)]
+    assert result == [BallotNominee(2, 3, 1.0, 4.0, 1)]
 
 
 @pytest.mark.asyncio
@@ -112,7 +112,12 @@ async def test_open_voting_creates_election(monkeypatch):
     monkeypatch.setattr(
         vs,
         "get_top_noms",
-        AsyncMock(return_value=[(1, 1, 1.0, 2.0, 1), (2, 2, 2.0, 4.0, 2)]),
+        AsyncMock(
+            return_value=[
+                BallotNominee(1, 1, 1.0, 2.0, 1),
+                BallotNominee(2, 2, 2.0, 4.0, 2),
+            ]
+        ),
     )
     fake_embed = AsyncMock()
     monkeypatch.setattr(vs, "_election_embed", fake_embed)
@@ -150,7 +155,7 @@ async def test_open_voting_accepts_custom_ballot_size(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
-    ballot_mock = AsyncMock(return_value=[(1, 1, 0.0, 1.0, 0)])
+    ballot_mock = AsyncMock(return_value=[BallotNominee(1, 1, 0.0, 1.0, 0)])
     monkeypatch.setattr(vs, "get_top_noms", ballot_mock)
     monkeypatch.setattr(vs, "_election_embed", AsyncMock())
     monkeypatch.setattr(
@@ -433,7 +438,12 @@ async def test_ballot_preview_sends_embed(monkeypatch):
     monkeypatch.setattr(
         vs,
         "get_top_noms",
-        AsyncMock(return_value=[(1, 2, 1.0, 3.0, 2), (2, 1, 0.5, 1.5, 0)]),
+        AsyncMock(
+            return_value=[
+                BallotNominee(1, 2, 1.0, 3.0, 2),
+                BallotNominee(2, 1, 0.5, 1.5, 0),
+            ]
+        ),
     )
     interaction = DummyInteraction()
     interaction.guild_id = 123
