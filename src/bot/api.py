@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from aiohttp import web
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from bot.config import get_settings
@@ -365,6 +365,25 @@ async def close_election(request: web.Request) -> web.Response:
 
 async def _calculate_ballot(session, limit: int) -> list[dict[str, object]]:
     nominations_table = Nomination.__table__
+    ballot_entries = (
+        select(
+            cast(func.json_array_elements_text(Election.ballot), Integer).label(
+                "book_id"
+            )
+        )
+        .select_from(Election)
+        .cte("ballot_entries")
+    )
+    ballot_appearances = (
+        select(
+            ballot_entries.c.book_id,
+            func.count().label("appearance_count"),
+        )
+        .group_by(ballot_entries.c.book_id)
+        .cte("ballot_appearances")
+    )
+    appearance_count_expr = func.coalesce(ballot_appearances.c.appearance_count, 0)
+    has_prior_expr = (appearance_count_expr > 0).label("has_prior_appearance")
     vote_totals = (
         select(
             Vote.book_id.label("book_id"),
@@ -374,29 +393,33 @@ async def _calculate_ballot(session, limit: int) -> list[dict[str, object]]:
         .subquery()
     )
 
+    score_expr = (
+        func.coalesce(nominations_table.c.reactions, 0)
+        + func.coalesce(vote_totals.c.vote_sum, 0)
+    ).label("score")
     stmt = (
         select(
             Book.id.label("book_id"),
             Book.title,
+            Book.created_at.label("created_at"),
             func.coalesce(nominations_table.c.reactions, 0).label("reactions"),
             func.coalesce(vote_totals.c.vote_sum, 0).label("previous_votes"),
-            (
-                func.coalesce(nominations_table.c.reactions, 0)
-                + func.coalesce(vote_totals.c.vote_sum, 0)
-            ).label("score"),
+            score_expr,
+            has_prior_expr,
         )
         .select_from(Book)
         .join(nominations_table, nominations_table.c.book_id == Book.id)
         .outerjoin(vote_totals, vote_totals.c.book_id == Book.id)
-        .order_by(literal_column("score").desc(), Book.created_at)
+        .outerjoin(ballot_appearances, ballot_appearances.c.book_id == Book.id)
     )
     if not settings.is_staging:
         stmt = stmt.where(func.coalesce(nominations_table.c.reactions, 0) > 0)
-    if limit:
-        stmt = stmt.limit(limit)
 
     result = await session.execute(stmt)
     rows = result.all()
+    if not rows:
+        return []
+
     ballot: list[dict[str, object]] = []
     for row in rows:
         previous_votes = row.previous_votes or 0
@@ -408,9 +431,25 @@ async def _calculate_ballot(session, limit: int) -> list[dict[str, object]]:
                 "reactions": int(row.reactions or 0),
                 "previous_votes": float(previous_votes),
                 "score": float(score),
+                "has_prior_appearance": bool(
+                    getattr(row, "has_prior_appearance", False)
+                ),
+                "_created_at": getattr(row, "created_at", None),
             }
         )
-    return ballot
+
+    ordered_ballot = sorted(
+        ballot,
+        key=lambda item: (
+            item["has_prior_appearance"],
+            -item["score"],
+            item["_created_at"] or datetime.min,
+        ),
+    )
+    if limit:
+        ordered_ballot = ordered_ballot[:limit]
+
+    return ordered_ballot
 
 
 async def _parse_request(request: web.Request, model: type[BaseModel]) -> BaseModel:
