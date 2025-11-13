@@ -21,6 +21,7 @@ settings = get_settings()
 
 @pytest.mark.asyncio
 async def test_get_top_noms_returns_scores(monkeypatch):
+    created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     session = DummySession(
         execute_results=[
             DummyResult(
@@ -31,6 +32,7 @@ async def test_get_top_noms_returns_scores(monkeypatch):
                         vote_sum=1.5,
                         score=3.5,
                         appearance_count=0,
+                        created_at=created_at,
                     )
                 ]
             )
@@ -64,6 +66,8 @@ async def test_get_top_noms_requires_seconding(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
+    created_old = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    created_new = datetime(2023, 6, 1, tzinfo=timezone.utc)
     session = DummySession(
         execute_results=[
             DummyResult(
@@ -74,6 +78,7 @@ async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
                         vote_sum=2.0,
                         score=7.0,
                         appearance_count=settings.max_election_appearances,
+                        created_at=created_old,
                     ),
                     SimpleNamespace(
                         book_id=2,
@@ -81,6 +86,7 @@ async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
                         vote_sum=1.0,
                         score=4.0,
                         appearance_count=1,
+                        created_at=created_new,
                     ),
                 ]
             ),
@@ -92,6 +98,42 @@ async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
     result = await vs.get_top_noms(session, limit=0)
 
     assert result == [BallotNominee(2, 3, 1.0, 4.0, 1)]
+
+
+@pytest.mark.asyncio
+async def test_get_top_noms_uses_created_at_for_tiebreak(monkeypatch):
+    created_old = datetime(2023, 5, 1, tzinfo=timezone.utc)
+    created_new = datetime(2023, 6, 1, tzinfo=timezone.utc)
+    session = DummySession(
+        execute_results=[
+            DummyResult(
+                rows=[
+                    SimpleNamespace(
+                        book_id=1,
+                        reactions=2,
+                        vote_sum=2.0,
+                        score=4.0,
+                        appearance_count=0,
+                        created_at=created_new,
+                    ),
+                    SimpleNamespace(
+                        book_id=2,
+                        reactions=2,
+                        vote_sum=2.0,
+                        score=4.0,
+                        appearance_count=0,
+                        created_at=created_old,
+                    ),
+                ]
+            )
+        ]
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
+
+    result = await vs.get_top_noms(session, limit=1)
+
+    assert [nom.book_id for nom in result] == [2]
 
 
 @pytest.mark.asyncio

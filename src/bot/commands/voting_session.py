@@ -7,7 +7,7 @@ import discord
 from discord import app_commands, Permissions
 from discord.ext import commands
 from loguru import logger
-from sqlalchemy import select, func, literal_column, Integer, cast
+from sqlalchemy import select, func, Integer, cast
 
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
@@ -168,6 +168,7 @@ class VotingSession(commands.Cog):
         stmt = (
             select(
                 Book.id.label("book_id"),
+                Book.created_at.label("created_at"),
                 func.coalesce(nominations_table.c.reactions, 0).label("reactions"),
                 func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
                 (
@@ -181,30 +182,56 @@ class VotingSession(commands.Cog):
             .outerjoin(sub_votes, sub_votes.c.book_id == Book.id)
             .outerjoin(appearance_totals, appearance_totals.c.book_id == Book.id)
             .where(~Book.id.in_(winner_subq))
-            .order_by(literal_column("score").desc(), Book.created_at)
         )
         if not settings.is_staging:
             stmt = stmt.where(func.coalesce(nominations_table.c.reactions, 0) > 0)
         stmt = stmt.where(appearance_count_expr < max_appearances)
-        if limit > 0:
-            stmt = stmt.limit(limit)
         result = await session.execute(stmt)
-        entries: list[BallotNominee] = []
-        for row in result.all():
+        rows = result.all()
+        if not rows:
+            return []
+        candidates: list[dict[str, object]] = []
+        for row in rows:
             book_id = int(row.book_id)
             prior_appearances = int(getattr(row, "appearance_count", 0) or 0)
             if prior_appearances >= max_appearances:
                 continue
-            entries.append(
-                BallotNominee(
-                    book_id=book_id,
-                    reactions=int(row.reactions),
-                    vote_sum=float(row.vote_sum) if row.vote_sum is not None else 0.0,
-                    score=float(row.score) if row.score is not None else 0.0,
-                    prior_appearances=prior_appearances,
-                )
+            vote_sum = float(row.vote_sum) if row.vote_sum is not None else 0.0
+            score = float(row.score) if row.score is not None else 0.0
+            created_at = getattr(row, "created_at", None)
+            created_order = (
+                created_at.timestamp()
+                if created_at is not None and hasattr(created_at, "timestamp")
+                else float("-inf")
             )
-        return entries
+            candidates.append(
+                {
+                    "nominee": BallotNominee(
+                        book_id=book_id,
+                        reactions=int(row.reactions),
+                        vote_sum=vote_sum,
+                        score=score,
+                        prior_appearances=prior_appearances,
+                    ),
+                    "has_prior": prior_appearances > 0,
+                    "score": score,
+                    "created_order": created_order,
+                }
+            )
+        ordered_entries = [
+            item["nominee"]
+            for item in sorted(
+                candidates,
+                key=lambda item: (
+                    item["has_prior"],
+                    -item["score"],
+                    item["created_order"],
+                ),
+            )
+        ]
+        if limit > 0:
+            ordered_entries = ordered_entries[:limit]
+        return ordered_entries
 
     @app_commands.command(
         name="open_voting",
