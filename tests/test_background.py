@@ -110,3 +110,55 @@ def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
         session.commit.assert_awaited_once()
 
     asyncio.run(_run())
+
+
+def test_send_prediction_reminders_returns_without_predictions(monkeypatch):
+    async def _run():
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        session = SimpleNamespace()
+        session.execute = AsyncMock(return_value=_FakeScalarResult([]))
+        client = SimpleNamespace(get_channel=lambda _: SimpleNamespace())
+
+        monkeypatch.setattr(background_mod, "utcnow", lambda: now)
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
+
+        await background_mod.send_prediction_reminders(client)
+
+        session.execute.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_send_prediction_reminders_fetches_channel_when_missing(monkeypatch):
+    async def _run():
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        prediction = SimpleNamespace(
+            text="Reminder", reminded=False, message_id=None, due_at=now
+        )
+        session = SimpleNamespace()
+        session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))
+        session.commit = AsyncMock()
+        channel = SimpleNamespace(
+            send=AsyncMock(),
+            id=1,
+            guild=SimpleNamespace(id=None),
+        )
+        client = SimpleNamespace(
+            get_channel=lambda _: None, fetch_channel=AsyncMock(return_value=channel)
+        )
+
+        monkeypatch.setattr(background_mod, "utcnow", lambda: now)
+        monkeypatch.setattr(
+            background_mod, "settings", SimpleNamespace(predictions_channel_id=9)
+        )
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
+
+        await background_mod.send_prediction_reminders(client)
+
+        client.fetch_channel.assert_awaited_once_with(9)
+
+    asyncio.run(_run())

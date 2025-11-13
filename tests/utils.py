@@ -40,6 +40,9 @@ class DummyResult:
     def all(self):
         return list(self._rows)
 
+    def __iter__(self):
+        return iter(self._rows)
+
 
 class DummySession:
     def __init__(
