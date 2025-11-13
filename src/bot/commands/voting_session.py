@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -33,6 +33,7 @@ class BallotNominee:
     vote_sum: float
     score: float
     prior_appearances: int
+    created_at: datetime
 
 
 @dataclass(slots=True)
@@ -190,7 +191,7 @@ class VotingSession(commands.Cog):
         rows = result.all()
         if not rows:
             return []
-        candidates: list[dict[str, object]] = []
+        candidates: list[BallotNominee] = []
         for row in rows:
             book_id = int(row.book_id)
             prior_appearances = int(getattr(row, "appearance_count", 0) or 0)
@@ -199,35 +200,28 @@ class VotingSession(commands.Cog):
             vote_sum = float(row.vote_sum) if row.vote_sum is not None else 0.0
             score = float(row.score) if row.score is not None else 0.0
             created_at = getattr(row, "created_at", None)
-            created_order = (
-                created_at.timestamp()
-                if created_at is not None and hasattr(created_at, "timestamp")
-                else float("-inf")
-            )
+            if created_at is None:
+                created_at = datetime.fromtimestamp(0, tz=timezone.utc)
             candidates.append(
-                {
-                    "nominee": BallotNominee(
-                        book_id=book_id,
-                        reactions=int(row.reactions),
-                        vote_sum=vote_sum,
-                        score=score,
-                        prior_appearances=prior_appearances,
-                    ),
-                    "has_prior": prior_appearances > 0,
-                    "score": score,
-                    "created_order": created_order,
-                }
+                BallotNominee(
+                    book_id=book_id,
+                    reactions=int(row.reactions),
+                    vote_sum=vote_sum,
+                    score=score,
+                    prior_appearances=prior_appearances,
+                    created_at=created_at,
+                )
             )
-        max_score = max(c["score"] for c in candidates)
+        max_score = max(c.score for c in candidates)
         ordered_entries = [
-            item["nominee"]
-            for item in sorted(
+            nominee
+            for nominee in sorted(
                 candidates,
                 key=lambda item: (
-                    item["score"] != max_score,
-                    item["has_prior"],
-                    -item["score"],
-                    item["created_order"],
+                    item.score != max_score,
+                    item.prior_appearances > 0,
+                    -item.score,
+                    item.created_at.timestamp(),
                 ),
             )
         ]

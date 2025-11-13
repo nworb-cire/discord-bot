@@ -43,7 +43,7 @@ async def test_get_top_noms_returns_scores(monkeypatch):
 
     result = await vs.get_top_noms(session, limit=1)
 
-    assert result == [BallotNominee(1, 2, 1.5, 3.5, 0)]
+    assert result == [BallotNominee(1, 2, 1.5, 3.5, 0, created_at=created_at)]
 
 
 @pytest.mark.asyncio
@@ -97,7 +97,7 @@ async def test_get_top_noms_blocks_fourth_appearance(monkeypatch):
 
     result = await vs.get_top_noms(session, limit=0)
 
-    assert result == [BallotNominee(2, 3, 1.0, 4.0, 1)]
+    assert result == [BallotNominee(2, 3, 1.0, 4.0, 1, created_at=created_new)]
 
 
 @pytest.mark.asyncio
@@ -161,9 +161,18 @@ async def test_open_voting_creates_election(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
     vs = VotingSession(bot=SimpleNamespace())
+    created_first = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    created_second = datetime(2023, 1, 2, tzinfo=timezone.utc)
     ballot_values = [
-        BallotNominee(1, 1, 1.0, 2.0, 1),
-        BallotNominee(2, 2, 2.0, 4.0, settings.max_election_appearances - 1),
+        BallotNominee(1, 1, 1.0, 2.0, 1, created_at=created_first),
+        BallotNominee(
+            2,
+            2,
+            2.0,
+            4.0,
+            settings.max_election_appearances - 1,
+            created_at=created_second,
+        ),
     ]
     monkeypatch.setattr(
         "bot.commands.voting_session.async_session", lambda: session_cm(session)
@@ -213,7 +222,18 @@ async def test_open_voting_accepts_custom_ballot_size(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
     )
-    ballot_mock = AsyncMock(return_value=[BallotNominee(1, 1, 0.0, 1.0, 0)])
+    ballot_mock = AsyncMock(
+        return_value=[
+            BallotNominee(
+                1,
+                1,
+                0.0,
+                1.0,
+                0,
+                created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            )
+        ]
+    )
     monkeypatch.setattr(vs, "get_top_noms", ballot_mock)
     monkeypatch.setattr(vs, "_election_embed", AsyncMock())
     monkeypatch.setattr(
@@ -505,8 +525,16 @@ async def test_ballot_preview_sends_embed(monkeypatch):
             1.0,
             3.0,
             star_threshold if star_threshold is not None else 0,
+            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
         ),
-        BallotNominee(2, 1, 0.5, 1.5, 0),
+        BallotNominee(
+            2,
+            1,
+            0.5,
+            1.5,
+            0,
+            created_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
+        ),
     ]
     monkeypatch.setattr(
         vs, "get_top_noms", AsyncMock(return_value=ballot_preview_values)
