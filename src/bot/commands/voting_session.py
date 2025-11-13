@@ -218,11 +218,13 @@ class VotingSession(commands.Cog):
                     "created_order": created_order,
                 }
             )
+        max_score = max(c["score"] for c in candidates)
         ordered_entries = [
             item["nominee"]
             for item in sorted(
                 candidates,
                 key=lambda item: (
+                    item["score"] != max_score,
                     item["has_prior"],
                     -item["score"],
                     item["created_order"],
