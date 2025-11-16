@@ -7,7 +7,7 @@ import pytest
 from bot.commands.voting_session import BallotNominee, VotingSession
 from bot.config import get_settings
 from bot.db import Election
-from bot.utils import NOMINATION_CANCEL_EMOJI
+from bot.utils import NOMINATION_CANCEL_EMOJI, UserFacingError
 from tests.utils import (
     DummyChannel,
     DummyInteraction,
@@ -401,6 +401,143 @@ async def test_close_voting_handles_no_votes(monkeypatch):
     await vs.close_voting(interaction)
 
     assert interaction.response.messages[0]["content"] == "No votes were cast."
+
+
+@pytest.mark.asyncio
+async def test_extend_voting_rejects_negative_hours():
+    interaction = DummyInteraction()
+    vs = VotingSession(bot=SimpleNamespace())
+
+    await vs.extend_voting(interaction, hours=-1)
+
+    assert (
+        interaction.response.messages[0]["content"] == "Hours must be zero or greater."
+    )
+
+
+@pytest.mark.asyncio
+async def test_extend_voting_requires_open_election(monkeypatch):
+    interaction = DummyInteraction()
+    session = DummySession()
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election", AsyncMock(return_value=None)
+    )
+
+    await vs.extend_voting(interaction, hours=1)
+
+    assert session.commit_calls == 0
+    assert interaction.response.messages[0]["content"] == "No open election found."
+
+
+@pytest.mark.asyncio
+async def test_extend_voting_updates_close_time(monkeypatch):
+    interaction = DummyInteraction()
+    session = DummySession()
+    vs = VotingSession(bot=SimpleNamespace())
+    closes_at = datetime(2024, 1, 1, 12, tzinfo=timezone.utc)
+    election = SimpleNamespace(closes_at=closes_at, ballot_message_id=99)
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=election),
+    )
+    update_mock = AsyncMock()
+    monkeypatch.setattr(vs, "_update_ballot_message_close_time", update_mock)
+
+    await vs.extend_voting(interaction, hours=2)
+
+    assert election.closes_at == closes_at + timedelta(hours=2)
+    assert session.commit_calls == 1
+    expected_ts = int(election.closes_at.timestamp())
+    update_mock.assert_awaited_once_with(interaction.client, 99, election.closes_at)
+    assert interaction.response.messages[0]["content"] == (
+        "Election closing time extended by 2 hours. " f"New close: <t:{expected_ts}:F>."
+    )
+
+
+@pytest.mark.asyncio
+async def test_extend_voting_warns_when_message_missing(monkeypatch):
+    interaction = DummyInteraction()
+    session = DummySession()
+    vs = VotingSession(bot=SimpleNamespace())
+    closes_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    election = SimpleNamespace(closes_at=closes_at, ballot_message_id=None)
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.get_open_election",
+        AsyncMock(return_value=election),
+    )
+
+    await vs.extend_voting(interaction, hours=1)
+
+    assert interaction.response.messages[0]["content"] == (
+        "No announcement message was available to update."
+    )
+    assert session.commit_calls == 0
+
+
+class _StubMessage:
+    def __init__(self, description: str):
+        self.embeds = [SimpleNamespace(description=description)]
+        self.edited_embed = None
+
+    async def edit(self, *, embed=None):
+        self.edited_embed = embed
+        self.embeds = [embed]
+
+
+class _StubChannel:
+    def __init__(self, message):
+        self._message = message
+
+    async def fetch_message(self, _message_id):
+        return self._message
+
+
+@pytest.mark.asyncio
+async def test_update_ballot_message_close_time_updates_embed():
+    description = "Vote with `/vote`! Election closes <t:1:R> on <t:1:F>."
+    message = _StubMessage(description)
+    channel = _StubChannel(message)
+    client = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=AsyncMock(return_value=channel),
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    closes_at = datetime(2024, 1, 1, 12, tzinfo=timezone.utc)
+
+    await vs._update_ballot_message_close_time(client, 1, closes_at)
+
+    expected_ts = int(closes_at.timestamp())
+    edited = message.edited_embed
+    assert edited is not None
+    assert (
+        edited.description == "Vote with `/vote`! "
+        f"Election closes <t:{expected_ts}:R> on <t:{expected_ts}:F>."
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_ballot_message_close_time_requires_embed():
+    message = SimpleNamespace(embeds=[])
+    channel = _StubChannel(message)
+    client = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=AsyncMock(return_value=channel),
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    closes_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+    with pytest.raises(UserFacingError):
+        await vs._update_ballot_message_close_time(client, 1, closes_at)
 
 
 @pytest.mark.asyncio

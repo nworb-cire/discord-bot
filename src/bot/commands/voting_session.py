@@ -11,7 +11,7 @@ from sqlalchemy import select, func, Integer, cast
 
 from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
-from bot.reactions import update_election_vote_reaction
+from bot.reactions import update_election_vote_reaction, DiscordNotFound
 from bot.election import close_and_tally, get_election_vote_totals
 from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
@@ -21,6 +21,7 @@ from bot.utils import (
     nomination_message_url,
     utcnow,
     short_book_title,
+    UserFacingError,
 )
 
 settings = get_settings()
@@ -52,6 +53,15 @@ class VoteSummary:
 class VotingSession(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    @staticmethod
+    def _build_election_description(closes_at: datetime) -> str:
+        closes_at = closes_at or utcnow()
+        closes_at_ts = int(closes_at.timestamp())
+        return (
+            "Vote with `/vote`! "
+            f"Election closes <t:{closes_at_ts}:R> on <t:{closes_at_ts}:F>."
+        )
 
     @staticmethod
     def _resolve_guild_id(interaction: discord.Interaction) -> Optional[int]:
@@ -295,11 +305,9 @@ class VotingSession(commands.Cog):
         closes_at: datetime,
         last_appearance_ids: Optional[set[int]] = None,
     ):
-        closes_at = int(closes_at.timestamp())
         embed = discord.Embed(
             title="Book Club Election",
-            description=f"Vote with `/vote`! "
-            f"Election closes <t:{closes_at}:R> on <t:{closes_at}:F>.",
+            description=self._build_election_description(closes_at),
         )
         async with async_session() as session:
             guild_id = self._resolve_guild_id(interaction)
@@ -339,6 +347,44 @@ class VotingSession(commands.Cog):
             )
         await interaction.followup.send("Election opened.", ephemeral=True)
 
+    async def _update_ballot_message_close_time(
+        self,
+        client: discord.Client,
+        ballot_message_id: int,
+        closes_at: datetime,
+    ) -> None:
+        channel = client.get_channel(settings.bookclub_channel_id)
+        if channel is None:
+            channel = await client.fetch_channel(settings.bookclub_channel_id)
+        try:
+            message = await channel.fetch_message(ballot_message_id)
+        except DiscordNotFound:
+            raise UserFacingError("Announcement message could not be found to update.")
+        except discord.HTTPException:
+            logger.exception(
+                "Failed to fetch ballot message %s for update.", ballot_message_id
+            )
+            raise UserFacingError(
+                "Failed to update the announcement message. Please try again."
+            )
+        embeds = getattr(message, "embeds", None)
+        embed = embeds[0] if embeds else None
+        if embed is None:
+            raise UserFacingError(
+                "Announcement message could not be updated because it had no embed."
+            )
+        embed.description = self._build_election_description(closes_at)
+        try:
+            await message.edit(embed=embed)
+        except discord.HTTPException:
+            logger.exception(
+                "Failed to edit ballot message %s with new close time.",
+                ballot_message_id,
+            )
+            raise UserFacingError(
+                "Failed to update the announcement message. Please try again."
+            )
+
     @app_commands.command(
         name="close_voting",
         description="Close the current election and announce results",
@@ -362,6 +408,46 @@ class VotingSession(commands.Cog):
             )
         else:
             await interaction.response.send_message("No votes were cast.")
+
+    @app_commands.command(
+        name="extend_voting",
+        description="Extend the current election by a number of hours",
+    )
+    @app_commands.default_permissions(Permissions(manage_roles=True))
+    @handle_interaction_errors()
+    async def extend_voting(self, interaction: discord.Interaction, hours: int):
+        if hours < 0:
+            await interaction.response.send_message(
+                "Hours must be zero or greater.", ephemeral=True
+            )
+            return
+        async with async_session() as session:
+            election = await get_open_election(session)
+            if not election:
+                await interaction.response.send_message(
+                    "No open election found.", ephemeral=True
+                )
+                return
+            ballot_message_id = getattr(election, "ballot_message_id", None)
+            if ballot_message_id is None:
+                raise UserFacingError(
+                    "No announcement message was available to update."
+                )
+            current_close = election.closes_at or utcnow()
+            election.closes_at = current_close + timedelta(hours=hours)
+            session.add(election)
+            await session.commit()
+        await self._update_ballot_message_close_time(
+            interaction.client,
+            ballot_message_id,
+            election.closes_at,
+        )
+        new_close_ts = int(election.closes_at.timestamp())
+        await interaction.response.send_message(
+            f"Election closing time extended by {hours} hours. "
+            f"New close: <t:{new_close_ts}:F>.",
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="result_preview",

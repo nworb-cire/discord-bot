@@ -145,6 +145,8 @@ class DummyMessage:
         self._entry = entry
         self.reactions: list[Any] = []
         self.deleted = False
+        embed = entry.get("embed")
+        self.embeds = [embed] if embed is not None else []
         if channel is not None and getattr(channel, "guild", None) is not None:
             guild_id = channel.guild.id
             self.jump_url = (
@@ -158,6 +160,13 @@ class DummyMessage:
 
     async def delete(self):
         self.deleted = True
+
+    async def edit(self, *, embed=None, content=None):
+        if embed is not None:
+            self._entry["embed"] = embed
+            self.embeds = [embed]
+        if content is not None:
+            self._entry["content"] = content
 
 
 class DummyChannel:
