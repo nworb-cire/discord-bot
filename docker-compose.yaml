@@ -1,6 +1,6 @@
 services:
   bot:
-    build: .
+    image: ghcr.io/nworb-cire/bookclub-bot:latest
     restart: unless-stopped
     depends_on:
       - db
@@ -41,7 +41,7 @@ services:
       - redisdata:/data
 
   migrate:
-    build: .
+    image: ghcr.io/nworb-cire/bookclub-bot:latest
     depends_on:
       - db
     command: "alembic upgrade head"
