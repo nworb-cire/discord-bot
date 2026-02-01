@@ -21,6 +21,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "alembic>=1.16.2",
     "dateparser>=1.2",
+    "google-api-python-client>=2.150",
+    "google-auth>=2.34",
 ]
 
 [project.optional-dependencies]

@@ -30,6 +30,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 
    ```dotenv
    DISCORD_BOT_TOKEN=your_token
+   DISCORD_GUILD_ID=1234567894
    BOOKCLUB_CHANNEL_ID=1234567890
    BOOKCLUB_NOM_CHANNEL_ID=1234567891
    BOOKCLUB_RESULTS_CHANNEL_ID=1234567892
@@ -40,6 +41,9 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    DATABASE_URL=postgresql+asyncpg://user:pwd@db/bot
    REDIS_URL=redis://redis:6379/0
    PREDICTIONS_CHANNEL_ID=1234567893
+   GOOGLE_CALENDAR_ID=your_calendar_id
+   GOOGLE_SERVICE_ACCOUNT_EMAIL=service_account@project.iam.gserviceaccount.com
+   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"  # pragma: allowlist secret
    STAGING=false
    ```
 4. **Start services**

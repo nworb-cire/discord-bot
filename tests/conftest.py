@@ -35,6 +35,10 @@ _DEFAULT_ENV = {
     "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
     "REDIS_URL": "redis://localhost:6379/0",
     "OPENAI_API_KEY": "test-openai",
+    "DISCORD_GUILD_ID": "9",
+    "GOOGLE_CALENDAR_ID": "calendar-id",
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL": "service-account@example.com",
+    "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n",  # pragma: allowlist secret
 }
 for key, value in _DEFAULT_ENV.items():
     os.environ.setdefault(key, value)

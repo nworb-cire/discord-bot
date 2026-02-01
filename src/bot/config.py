@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     max_election_appearances: int = Field(
         default=3, alias="BOOK_MAX_ELECTION_APPEARANCES"
     )
+    discord_guild_id: int = Field(alias="DISCORD_GUILD_ID")
+    google_calendar_id: str = Field(alias="GOOGLE_CALENDAR_ID")
+    google_service_account_email: str = Field(alias="GOOGLE_SERVICE_ACCOUNT_EMAIL")
+    google_service_account_private_key: str = Field(
+        alias="GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"
+    )
 
     model_config = SettingsConfigDict(env_file=".env")
 
