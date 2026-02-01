@@ -3,9 +3,12 @@ services:
     image: ghcr.io/nworb-cire/bookclub-bot:latest
     restart: unless-stopped
     depends_on:
-      - db
-      - redis
-      - migrate
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DISCORD_BOT_TOKEN
       - BOOKCLUB_CHANNEL_ID
@@ -47,9 +50,10 @@ services:
   migrate:
     image: ghcr.io/nworb-cire/bookclub-bot:latest
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     command: "alembic upgrade head"
-    restart: unless-stopped
+    restart: "no"
     environment:
       - DISCORD_BOT_TOKEN
       - BOOKCLUB_CHANNEL_ID
