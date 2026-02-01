@@ -4,9 +4,12 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - db
-      - redis
-      - migrate
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./src:/app/src
 
@@ -36,12 +39,13 @@ services:
     build: .
     env_file: .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - ./migrations:/app/migrations
       - ./alembic.ini:/app/alembic.ini
     command: "alembic upgrade head"
-    restart: unless-stopped
+    restart: "no"
 
 volumes:
   pgdata:
