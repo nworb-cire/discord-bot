@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 
@@ -7,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.future import select
 
 from bot.config import get_settings
-from bot.db import async_session, Book, Election, Vote
+from bot.db import async_session, Book, Vote
 from bot.reactions import update_election_vote_reaction
 from bot.utils import get_open_election, handle_interaction_errors, short_book_title
 
@@ -108,25 +109,26 @@ class Ballot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def _load_ballot(self):
+        async with async_session() as session:
+            election = await get_open_election(session)
+            if not election:
+                return None, None
+            books_result = await session.execute(
+                select(Book).where(Book.id.in_(election.ballot))
+            )
+            books = books_result.scalars().all()
+        return election, books
+
     @discord.app_commands.command(
         name="vote", description="Vote for your favorite nominations."
     )
     @handle_interaction_errors()
     async def vote(self, interaction: discord.Interaction):
-        async with async_session() as session:
-            result = await session.execute(
-                select(Election).where(Election.closed_at.is_(None))
-            )
-            election = result.scalar_one_or_none()
-            if not election:
-                await interaction.response.send_message(
-                    "Voting not open.", ephemeral=True
-                )
-                return
-            books_result = await session.execute(
-                select(Book).where(Book.id.in_(election.ballot))
-            )
-            books = books_result.scalars().all()
+        election, books = await asyncio.wait_for(self._load_ballot(), timeout=2.0)
+        if not election:
+            await interaction.response.send_message("Voting not open.", ephemeral=True)
+            return
         if len(books) == 0:
             await interaction.response.send_message(
                 "No nominations available for voting.", ephemeral=True
