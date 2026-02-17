@@ -162,3 +162,57 @@ def test_send_prediction_reminders_fetches_channel_when_missing(monkeypatch):
         client.fetch_channel.assert_awaited_once_with(9)
 
     asyncio.run(_run())
+
+
+def test_run_calendar_sync_invokes_sync_runner(monkeypatch):
+    async def _run():
+        calls = []
+
+        class _Runner:
+            def __init__(self, settings):
+                self.settings = settings
+
+            def run(self):
+                calls.append("run")
+
+        async def _to_thread(func):
+            func()
+
+        monkeypatch.setattr(background_mod, "DiscordGoogleCalendarSync", _Runner)
+        monkeypatch.setattr(background_mod.asyncio, "to_thread", _to_thread)
+
+        await background_mod.run_calendar_sync()
+
+        assert calls == ["run"]
+
+    asyncio.run(_run())
+
+
+def test_run_calendar_sync_logs_sync_errors(monkeypatch):
+    async def _run():
+        class _Runner:
+            def __init__(self, settings):
+                self.settings = settings
+
+            def run(self):
+                raise background_mod.SyncError("boom")
+
+        async def _to_thread(func):
+            func()
+
+        called = {"exception": 0}
+
+        def _log_exception(*_args, **_kwargs):
+            called["exception"] += 1
+
+        monkeypatch.setattr(background_mod, "DiscordGoogleCalendarSync", _Runner)
+        monkeypatch.setattr(background_mod.asyncio, "to_thread", _to_thread)
+        monkeypatch.setattr(
+            background_mod, "logger", SimpleNamespace(exception=_log_exception)
+        )
+
+        await background_mod.run_calendar_sync()
+
+        assert called["exception"] == 1
+
+    asyncio.run(_run())

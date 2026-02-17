@@ -2,7 +2,11 @@ import discord
 from discord.ext import tasks, commands
 from loguru import logger
 
-from bot.background import close_expired_elections, send_prediction_reminders
+from bot.background import (
+    close_expired_elections,
+    run_calendar_sync,
+    send_prediction_reminders,
+)
 from bot.config import get_settings
 from bot.commands.predict import Predict
 from bot.commands.vote import Ballot
@@ -32,6 +36,7 @@ async def on_ready():
     logger.info(f"Bot ready as {bot.user}.")
     election_auto_close.start()
     prediction_reminder.start()
+    calendar_sync.start()
 
 
 @tasks.loop(minutes=60)
@@ -42,6 +47,11 @@ async def election_auto_close():
 @tasks.loop(minutes=1)
 async def prediction_reminder():
     await send_prediction_reminders(bot)
+
+
+@tasks.loop(minutes=30)
+async def calendar_sync():
+    await run_calendar_sync()
 
 
 if __name__ == "__main__":

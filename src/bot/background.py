@@ -1,6 +1,10 @@
+import asyncio
+
 import discord
+from loguru import logger
 from sqlalchemy import select
 
+from bot.calendar_sync import DiscordGoogleCalendarSync, SyncError
 from bot.config import get_settings
 from bot.db import async_session, Prediction
 from bot.election import close_and_tally
@@ -51,3 +55,12 @@ async def send_prediction_reminders(bot: discord.Client):
             await channel.send("\n".join(lines))
             p.reminded = True
         await session.commit()
+
+
+async def run_calendar_sync():
+    try:
+        await asyncio.to_thread(DiscordGoogleCalendarSync(settings).run)
+    except SyncError:
+        logger.exception("Calendar sync failed.")
+    except Exception:
+        logger.exception("Calendar sync failed unexpectedly.")

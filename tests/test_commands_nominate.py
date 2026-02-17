@@ -7,7 +7,13 @@ from bot.config import get_settings
 from bot.commands.nominate import Nominate
 from bot.db import Book, Nomination
 from bot.utils import NOMINATION_CANCEL_EMOJI, utcnow
-from tests.utils import DummyChannel, DummyInteraction, DummyResult, DummySession, session_cm
+from tests.utils import (
+    DummyChannel,
+    DummyInteraction,
+    DummyResult,
+    DummySession,
+    session_cm,
+)
 
 settings = get_settings()
 
@@ -19,10 +25,15 @@ class FakeOpenAI:
 
 @pytest.mark.asyncio
 async def test_nominate_existing_book(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     existing_book = SimpleNamespace(title="Existing", id=1)
     session = DummySession(execute_results=[DummyResult(scalar=existing_book)])
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
     interaction = DummyInteraction()
     cog = Nominate(bot=SimpleNamespace())
 
@@ -35,7 +46,10 @@ async def test_nominate_existing_book(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_creates_book_and_posts_embed(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     summary_text = "Great book"
     fixed_now = utcnow()
 
@@ -44,11 +58,16 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
             if isinstance(obj, Book) and getattr(obj, "id", None) is None:
                 obj.id = 42
 
-    session = DummySession(execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook)
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    session = DummySession(
+        execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook
+    )
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
     monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
 
     cog = Nominate(bot=SimpleNamespace())
+
     async def fake_search(_isbn):
         return {
             "title": "The Title",
@@ -88,7 +107,10 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cancel_reaction_by_nominator_deletes_nomination(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
 
     nomination_row = SimpleNamespace(book_id=7, nominator_discord_id=88, message_id=1)
     book_row = SimpleNamespace(id=7)
@@ -96,7 +118,9 @@ async def test_cancel_reaction_by_nominator_deletes_nomination(monkeypatch):
         execute_results=[DummyResult(scalar=nomination_row)],
         get_results={7: book_row},
     )
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
 
     channel = DummyChannel(settings.nom_channel_id)
     await channel.send(content="Nomination")
@@ -128,11 +152,16 @@ async def test_cancel_reaction_by_nominator_deletes_nomination(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
 
     nomination_row = SimpleNamespace(book_id=7, nominator_discord_id=88, message_id=1)
     session = DummySession(execute_results=[DummyResult(scalar=nomination_row)])
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
 
     channel = DummyChannel(settings.nom_channel_id)
     await channel.send(content="Nomination")
@@ -164,7 +193,10 @@ async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_handles_missing_channel(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     summary_text = "Summary"
     fixed_now = utcnow()
 
@@ -173,8 +205,12 @@ async def test_nominate_handles_missing_channel(monkeypatch):
             if isinstance(obj, Book) and getattr(obj, "id", None) is None:
                 obj.id = 55
 
-    session = DummySession(execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook)
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    session = DummySession(
+        execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook
+    )
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
     monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
 
     cog = Nominate(bot=SimpleNamespace())
@@ -191,11 +227,16 @@ async def test_nominate_handles_missing_channel(monkeypatch):
     monkeypatch.setattr(cog, "open_library_search", fake_search)
     monkeypatch.setattr(cog, "openai_summarize", fake_summarize)
 
-    interaction = DummyInteraction(client=SimpleNamespace(get_channel=lambda _cid: None))
+    interaction = DummyInteraction(
+        client=SimpleNamespace(get_channel=lambda _cid: None)
+    )
 
     await cog.nominate(interaction, "0-395-19395-8")
 
-    assert interaction.followup.messages[-1]["content"] == "Unable to locate the nominations channel. Please contact an admin."
+    assert (
+        interaction.followup.messages[-1]["content"]
+        == "Unable to locate the nominations channel. Please contact an admin."
+    )
     assert not session.deleted
     assert session.commit_calls == 0
     assert session.rollback_calls == 1
@@ -203,12 +244,17 @@ async def test_nominate_handles_missing_channel(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_handles_open_library_error(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     request = httpx.Request("GET", "https://example.com")
     response = httpx.Response(500, request=request)
     error = httpx.HTTPStatusError("boom", request=request, response=response)
     session = DummySession(execute_results=[DummyResult(scalar=None)])
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
     cog = Nominate(bot=SimpleNamespace())
 
     async def failing(_isbn):
@@ -219,15 +265,23 @@ async def test_nominate_handles_open_library_error(monkeypatch):
 
     await cog.nominate(interaction, "1234567890")
 
-    assert interaction.followup.messages[0]["content"] == "Failed to fetch book metadata from OpenLibrary.org."
+    assert (
+        interaction.followup.messages[0]["content"]
+        == "Failed to fetch book metadata from OpenLibrary.org."
+    )
     assert session.commit_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_nominate_handles_missing_metadata(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     session = DummySession(execute_results=[DummyResult(scalar=None)])
-    monkeypatch.setattr("bot.commands.nominate.async_session", lambda: session_cm(session))
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
     cog = Nominate(bot=SimpleNamespace())
 
     async def missing(_isbn):
@@ -238,7 +292,10 @@ async def test_nominate_handles_missing_metadata(monkeypatch):
 
     await cog.nominate(interaction, "1234567890")
 
-    assert interaction.followup.messages[0]["content"] == "Failed to find book in OpenLibrary.org."
+    assert (
+        interaction.followup.messages[0]["content"]
+        == "Failed to find book in OpenLibrary.org."
+    )
     assert session.commit_calls == 0
 
 
@@ -265,7 +322,10 @@ async def test_open_library_search_returns_json(monkeypatch):
             return DummyResponse()
 
     monkeypatch.setattr("bot.commands.nominate.httpx.AsyncClient", DummyClient)
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     cog = Nominate(bot=SimpleNamespace())
 
     data = await cog.open_library_search("123")
@@ -275,7 +335,10 @@ async def test_open_library_search_returns_json(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_openai_summarize_handles_empty_response(monkeypatch):
-    monkeypatch.setattr("bot.commands.nominate.openai.AsyncOpenAI", lambda **kwargs: FakeOpenAI(**kwargs))
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
     cog = Nominate(bot=SimpleNamespace())
 
     class DummyResponses:

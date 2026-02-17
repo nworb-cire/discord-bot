@@ -38,17 +38,22 @@ async def test_on_ready_syncs_commands(monkeypatch):
     sync_mock.assert_awaited_once()
     assert getattr(main.election_auto_close, "started", False) is True
     assert getattr(main.prediction_reminder, "started", False) is True
+    assert getattr(main.calendar_sync, "started", False) is True
 
 
 @pytest.mark.asyncio
 async def test_background_loops_call_tasks(monkeypatch):
     close_mock = AsyncMock()
     remind_mock = AsyncMock()
+    sync_mock = AsyncMock()
     monkeypatch.setattr(main, "close_expired_elections", close_mock)
     monkeypatch.setattr(main, "send_prediction_reminders", remind_mock)
+    monkeypatch.setattr(main, "run_calendar_sync", sync_mock)
 
     await main.election_auto_close()
     await main.prediction_reminder()
+    await main.calendar_sync()
 
     close_mock.assert_awaited_once()
     remind_mock.assert_awaited_once()
+    sync_mock.assert_awaited_once()

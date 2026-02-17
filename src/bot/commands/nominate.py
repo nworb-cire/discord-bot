@@ -54,16 +54,23 @@ class Nominate(commands.Cog):
                     meta = await self.open_library_search(isbn)
                 except httpx.HTTPStatusError as e:
                     logger.error("Failed to fetch book metadata: {}", e)
-                    await interaction.followup.send("Failed to fetch book metadata from OpenLibrary.org.", ephemeral=True)
+                    await interaction.followup.send(
+                        "Failed to fetch book metadata from OpenLibrary.org.",
+                        ephemeral=True,
+                    )
                     return
                 if not meta:
-                    await interaction.followup.send("Failed to find book in OpenLibrary.org.", ephemeral=True)
+                    await interaction.followup.send(
+                        "Failed to find book in OpenLibrary.org.", ephemeral=True
+                    )
                     return
 
                 title = meta.get("title", "Unknown Title")
                 subtitle = meta.get("subtitle", "")
                 full_title = f"{title}: {subtitle}" if subtitle else title
-                description = str(meta.get("description", ""))  # Sometimes this comes through as a nested dict
+                description = str(
+                    meta.get("description", "")
+                )  # Sometimes this comes through as a nested dict
                 summary = await self.openai_summarize(full_title, description)
                 book = Book(
                     title=full_title,
@@ -101,25 +108,38 @@ class Nominate(commands.Cog):
                 channel = await client.fetch_channel(settings.nom_channel_id)
             if channel is None:
                 await session.rollback()
-                raise UserFacingError("Unable to locate the nominations channel. Please contact an admin.")
+                raise UserFacingError(
+                    "Unable to locate the nominations channel. Please contact an admin."
+                )
             try:
                 message = await channel.send(embed=embed)
             except Exception:
                 await session.rollback()
-                logger.exception("Failed to send nomination message to channel {}", settings.nom_channel_id)
-                raise UserFacingError("Failed to post nomination. Please try again later.")
+                logger.exception(
+                    "Failed to send nomination message to channel {}",
+                    settings.nom_channel_id,
+                )
+                raise UserFacingError(
+                    "Failed to post nomination. Please try again later."
+                )
             await message.add_reaction(NOMINATION_CANCEL_EMOJI)
             nomination.message_id = message.id
             session.add(nomination)
             await session.commit()
 
-        await interaction.followup.send(f"Nominated *{full_title or book.title}*", ephemeral=True)
+        await interaction.followup.send(
+            f"Nominated *{full_title or book.title}*", ephemeral=True
+        )
         if interaction.channel.id != settings.nom_channel_id:
-            await interaction.channel.send(f"{interaction.user.mention} nominated *{full_title or book.title}*")
+            await interaction.channel.send(
+                f"{interaction.user.mention} nominated *{full_title or book.title}*"
+            )
 
     async def open_library_search(self, isbn: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
-            r = await client.get(f"https://openlibrary.org/isbn/{isbn}.json", follow_redirects=True)
+            r = await client.get(
+                f"https://openlibrary.org/isbn/{isbn}.json", follow_redirects=True
+            )
             r.raise_for_status()
         return r.json()
 
@@ -127,11 +147,15 @@ class Nominate(commands.Cog):
         response = await self.openai_client.responses.create(
             model="gpt-4o-mini",
             instructions="You are a helpful librarian whose job is to convince smart people why they might "
-                         "want to read certain books, by giving accurate and compelling summaries of them. "
-                         "You are to provide a three-sentence summary of the book..",
+            "want to read certain books, by giving accurate and compelling summaries of them. "
+            "You are to provide a three-sentence summary of the book..",
             input=f"Book title: {title}\nDescription: {description}",
         )
-        return response.output[0].content[0].text.strip() if response.output else "No summary available."
+        return (
+            response.output[0].content[0].text.strip()
+            if response.output
+            else "No summary available."
+        )
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):

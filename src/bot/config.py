@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     redis_url: str = Field(alias="REDIS_URL")
     openai_key: str = Field(alias="OPENAI_API_KEY")
+    google_service_account_email: str = Field(alias="GOOGLE_SERVICE_ACCOUNT_EMAIL")
+    google_service_account_private_key: str = Field(
+        alias="GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"
+    )
+    google_calendar_id: str = Field(alias="GOOGLE_CALENDAR_ID")
+    discord_guild_id: int | None = Field(alias="DISCORD_GUILD_ID", default=None)
     is_staging: bool = Field(alias="STAGING", default=False)
     max_election_appearances: int = Field(
         default=3, alias="BOOK_MAX_ELECTION_APPEARANCES"
