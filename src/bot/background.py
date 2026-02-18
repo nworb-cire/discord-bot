@@ -5,6 +5,10 @@ from loguru import logger
 from sqlalchemy import select
 
 from bot.calendar_sync import DiscordGoogleCalendarSync, SyncError
+from bot.recurring_discord_events import (
+    RecurringDiscordEventCreator,
+    RecurringEventError,
+)
 from bot.config import get_settings
 from bot.db import async_session, Prediction
 from bot.election import close_and_tally
@@ -64,3 +68,12 @@ async def run_calendar_sync():
         logger.exception("Calendar sync failed.")
     except Exception:
         logger.exception("Calendar sync failed unexpectedly.")
+
+
+async def run_recurring_event_creation():
+    try:
+        await asyncio.to_thread(RecurringDiscordEventCreator(settings).run)
+    except RecurringEventError:
+        logger.exception("Recurring event creation failed.")
+    except Exception:
+        logger.exception("Recurring event creation failed unexpectedly.")

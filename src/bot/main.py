@@ -5,6 +5,7 @@ from loguru import logger
 from bot.background import (
     close_expired_elections,
     run_calendar_sync,
+    run_recurring_event_creation,
     send_prediction_reminders,
 )
 from bot.config import get_settings
@@ -12,6 +13,7 @@ from bot.commands.predict import Predict
 from bot.commands.vote import Ballot
 from bot.commands.nominate import Nominate
 from bot.commands.voting_session import VotingSession
+from bot.utils import MOUNTAIN, utcnow
 
 settings = get_settings()
 bot = commands.Bot(
@@ -37,6 +39,7 @@ async def on_ready():
     election_auto_close.start()
     prediction_reminder.start()
     calendar_sync.start()
+    recurring_event_creation.start()
 
 
 @tasks.loop(minutes=60)
@@ -52,6 +55,13 @@ async def prediction_reminder():
 @tasks.loop(minutes=30)
 async def calendar_sync():
     await run_calendar_sync()
+
+
+@tasks.loop(hours=6)
+async def recurring_event_creation():
+    if utcnow().astimezone(MOUNTAIN).day != 1:
+        return
+    await run_recurring_event_creation()
 
 
 if __name__ == "__main__":
