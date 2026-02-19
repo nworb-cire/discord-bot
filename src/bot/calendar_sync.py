@@ -157,6 +157,7 @@ class DiscordGoogleCalendarSync:
     ) -> SyncPlan:
         plan = SyncPlan()
         existing = self._existing_google_by_discord_id(google_events)
+        seen_discord_event_ids: set[str] = set()
 
         for discord_event in discord_events:
             event_body, skipped_before_cutoff = self._build_google_event_body(
@@ -171,6 +172,7 @@ class DiscordGoogleCalendarSync:
             discord_event_id = event_body["extendedProperties"]["private"][
                 "discord_event_id"
             ]
+            seen_discord_event_ids.add(discord_event_id)
             existing_event = existing.get(discord_event_id)
 
             if existing_event is None:
@@ -192,6 +194,21 @@ class DiscordGoogleCalendarSync:
                     "google_event_id": existing_event["id"],
                     "discord_event_id": discord_event_id,
                     "body": event_body,
+                }
+            )
+
+        for discord_event_id, existing_event in existing.items():
+            if discord_event_id in seen_discord_event_ids:
+                continue
+
+            google_event_id = existing_event.get("id")
+            if not google_event_id:
+                continue
+
+            plan.to_cancel.append(
+                {
+                    "google_event_id": google_event_id,
+                    "discord_event_id": discord_event_id,
                 }
             )
 

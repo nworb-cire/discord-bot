@@ -1,7 +1,5 @@
-from datetime import UTC, datetime
+from datetime import UTC
 from types import SimpleNamespace
-
-import pytest
 
 from bot.calendar_sync import DiscordGoogleCalendarSync, SyncPlan
 
@@ -45,11 +43,11 @@ class _Client:
 def _settings(**kwargs):
     base = dict(
         discord_guild_id=42,
-        discord_token="token",
+        discord_token="discord-auth-placeholder",  # pragma: allowlist secret
         bookclub_channel_id=777,
         google_calendar_id="cal",
         google_service_account_email="svc@example.com",
-        google_service_account_private_key="pk",
+        google_service_account_private_key="pk",  # pragma: allowlist secret
         is_staging=False,
     )
     base.update(kwargs)
@@ -252,6 +250,51 @@ def test_build_sync_plan_create_and_update():
     plan = sync._build_sync_plan(discord_events, google_events)
     assert len(plan.to_create) == 1
     assert len(plan.to_update) == 1
+
+
+def test_build_sync_plan_cancels_orphaned_google_events():
+    sync = DiscordGoogleCalendarSync(_settings(discord_guild_id=42))
+    discord_events = [
+        {
+            "id": "a",
+            "name": "keep",
+            "scheduled_start_time": "2026-01-02T00:00:00Z",
+            "scheduled_end_time": "2026-01-02T01:00:00Z",
+            "status": 1,
+        }
+    ]
+
+    keep_body, skipped = sync._build_google_event_body(discord_events[0])
+    assert skipped is False
+    assert keep_body is not None
+
+    google_events = [
+        {
+            "id": "g-a",
+            "extendedProperties": {
+                "private": {
+                    "discord_event_id": "a",
+                    "sync_hash": keep_body["extendedProperties"]["private"][
+                        "sync_hash"
+                    ],
+                }
+            },
+        },
+        {
+            "id": "g-old",
+            "extendedProperties": {
+                "private": {
+                    "discord_event_id": "old",
+                    "sync_hash": "old-hash",
+                }
+            },
+        },
+    ]
+
+    plan = sync._build_sync_plan(discord_events, google_events)
+    assert plan.to_create == []
+    assert plan.to_update == []
+    assert plan.to_cancel == [{"google_event_id": "g-old", "discord_event_id": "old"}]
 
 
 def test_resolve_discord_guild_id_from_channel(monkeypatch):
