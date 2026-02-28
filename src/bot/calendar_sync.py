@@ -64,7 +64,11 @@ class DiscordGoogleCalendarSync:
             "to_update": len(plan.to_update),
             "to_cancel": len(plan.to_cancel),
         }
-        logger.info(f"Calendar sync summary: {json.dumps(summary, sort_keys=True)}")
+        has_changes = bool(
+            summary["to_create"] or summary["to_update"] or summary["to_cancel"]
+        )
+        if has_changes:
+            logger.info(f"Calendar sync summary: {json.dumps(summary, sort_keys=True)}")
 
         if not apply_changes:
             return summary
@@ -78,12 +82,13 @@ class DiscordGoogleCalendarSync:
         for cancel in plan.to_cancel:
             self._cancel_google_event(cancel["google_event_id"])
 
-        logger.info(
-            "Applied calendar sync changes: "
-            f"created={len(plan.to_create)} "
-            f"updated={len(plan.to_update)} "
-            f"canceled={len(plan.to_cancel)}"
-        )
+        if has_changes:
+            logger.info(
+                "Applied calendar sync changes: "
+                f"created={len(plan.to_create)} "
+                f"updated={len(plan.to_update)} "
+                f"canceled={len(plan.to_cancel)}"
+            )
         return summary
 
     def _load_discord_events(self) -> list[dict[str, Any]]:
