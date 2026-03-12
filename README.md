@@ -6,7 +6,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 
 ## Features
 
-* `/nominate <link>`: Scrape Amazon book data and summarize via OpenAI.
+* `/nominate <isbn>`: Fetch book metadata from Open Library and summaries from Google Books.
 * `/open_voting [hours]`: Open a time-limited election with a ranked ballot.
 * `/vote`: Allocate weighted votes per election.
 * `/close_voting`: Close elections early and post results with discussion threads.
@@ -36,7 +36,6 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    BOOKCLUB_ROLE_ID=123456
    VOTE_WEIGHT_INNER=100
    VOTE_WEIGHT_OUTER=30
-   OPENAI_API_KEY=your_openai_key
    DATABASE_URL=postgresql+asyncpg://user:pwd@db/bot
    REDIS_URL=redis://redis:6379/0
    PREDICTIONS_CHANNEL_ID=1234567893
