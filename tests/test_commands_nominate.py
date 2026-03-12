@@ -25,11 +25,6 @@ async def flush_tasks():
     await asyncio.sleep(0)
 
 
-class FakeOpenAI:
-    def __init__(self, **_kwargs):
-        self.responses = SimpleNamespace(create=None)
-
-
 class DummyUsers:
     def __init__(self, ids):
         self.ids = ids
@@ -53,10 +48,6 @@ class DummyReaction:
 
 @pytest.mark.asyncio
 async def test_nominate_existing_book(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     existing_book = SimpleNamespace(title="Existing", id=1)
     session = DummySession(execute_results=[DummyResult(scalar=existing_book)])
     monkeypatch.setattr(
@@ -74,10 +65,6 @@ async def test_nominate_existing_book(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_creates_book_and_posts_embed(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     summary_text = "Great book"
     fixed_now = utcnow()
 
@@ -104,11 +91,11 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
             "number_of_pages": 321,
         }
 
-    async def fake_summarize(_title, _desc):
+    async def fake_summary(_isbn, _desc):
         return summary_text
 
     monkeypatch.setattr(cog, "open_library_search", fake_search)
-    monkeypatch.setattr(cog, "openai_summarize", fake_summarize)
+    monkeypatch.setattr(cog, "fetch_summary", fake_summary)
 
     nom_channel = DummyChannel(2)
     interaction_channel = DummyChannel(5)
@@ -126,7 +113,8 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     assert session.flush_calls >= 2
     embed_entry = nom_channel.messages[0]
     assert embed_entry["embed"].title == "The Title: An Adventure"
-    assert "Note: AI generated" in embed_entry["embed"].description
+    assert "Great book" in embed_entry["embed"].description
+    assert "Note: AI generated" not in embed_entry["embed"].description
     assert NOMINATION_CANCEL_EMOJI in embed_entry["reactions"]
     assert interaction.channel.messages[0]["content"].startswith("<@99> nominated")
     nomination = next(obj for obj in session.added if isinstance(obj, Nomination))
@@ -135,11 +123,6 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cancel_reaction_by_nominator_deletes_nomination(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
-
     nomination_row = SimpleNamespace(book_id=7, nominator_discord_id=88, message_id=1)
     book_row = SimpleNamespace(id=7)
     session = DummySession(
@@ -180,11 +163,6 @@ async def test_cancel_reaction_by_nominator_deletes_nomination(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
-
     nomination_row = SimpleNamespace(book_id=7, nominator_discord_id=88, message_id=1)
     session = DummySession(execute_results=[DummyResult(scalar=nomination_row)])
     monkeypatch.setattr(
@@ -221,11 +199,6 @@ async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_cancel_reaction_refreshes_nomination_count(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
-
     nomination_row = SimpleNamespace(
         book_id=7, nominator_discord_id=88, message_id=1, reactions=0
     )
@@ -281,11 +254,6 @@ async def test_non_cancel_reaction_refreshes_nomination_count(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reaction_remove_refreshes_nomination_count(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
-
     nomination_row = SimpleNamespace(
         book_id=7, nominator_discord_id=88, message_id=1, reactions=3
     )
@@ -334,11 +302,6 @@ async def test_reaction_remove_refreshes_nomination_count(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominator_reaction_does_not_change_second_count(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
-
     nomination_row = SimpleNamespace(
         book_id=7, nominator_discord_id=88, message_id=1, reactions=2
     )
@@ -386,10 +349,6 @@ async def test_nominator_reaction_does_not_change_second_count(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reaction_refresh_is_debounced(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     cog = Nominate(bot=SimpleNamespace())
     real_sleep = asyncio.sleep
 
@@ -417,10 +376,6 @@ async def test_reaction_refresh_is_debounced(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_handles_missing_channel(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     summary_text = "Summary"
     fixed_now = utcnow()
 
@@ -445,11 +400,11 @@ async def test_nominate_handles_missing_channel(monkeypatch):
             "description": "Fun",
         }
 
-    async def fake_summarize(_title, _desc):
+    async def fake_summary(_isbn, _desc):
         return summary_text
 
     monkeypatch.setattr(cog, "open_library_search", fake_search)
-    monkeypatch.setattr(cog, "openai_summarize", fake_summarize)
+    monkeypatch.setattr(cog, "fetch_summary", fake_summary)
 
     interaction = DummyInteraction(
         client=SimpleNamespace(get_channel=lambda _cid: None)
@@ -468,10 +423,6 @@ async def test_nominate_handles_missing_channel(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_handles_open_library_error(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     request = httpx.Request("GET", "https://example.com")
     response = httpx.Response(500, request=request)
     error = httpx.HTTPStatusError("boom", request=request, response=response)
@@ -498,10 +449,6 @@ async def test_nominate_handles_open_library_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_handles_missing_metadata(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     session = DummySession(execute_results=[DummyResult(scalar=None)])
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
@@ -546,10 +493,6 @@ async def test_open_library_search_returns_json(monkeypatch):
             return DummyResponse()
 
     monkeypatch.setattr("bot.commands.nominate.httpx.AsyncClient", DummyClient)
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
     cog = Nominate(bot=SimpleNamespace())
 
     data = await cog.open_library_search("123")
@@ -558,19 +501,68 @@ async def test_open_library_search_returns_json(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openai_summarize_handles_empty_response(monkeypatch):
-    monkeypatch.setattr(
-        "bot.commands.nominate.openai.AsyncOpenAI",
-        lambda **kwargs: FakeOpenAI(**kwargs),
-    )
+async def test_google_books_summary_returns_normalized_description(monkeypatch):
+    class DummyResponse:
+        def json(self):
+            return {
+                "items": [
+                    {
+                        "volumeInfo": {
+                            "industryIdentifiers": [
+                                {"type": "ISBN_13", "identifier": "9781234567897"}
+                            ],
+                            "description": "<p>One <b>great</b> book.</p>",
+                        }
+                    }
+                ]
+            }
+
+        def raise_for_status(self):
+            return None
+
+    class DummyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *_args, **_kwargs):
+            return DummyResponse()
+
+    cog = Nominate(bot=SimpleNamespace())
+    monkeypatch.setattr("bot.commands.nominate.httpx.AsyncClient", DummyClient)
+
+    result = await cog.google_books_summary("9781234567897")
+
+    assert result == "One great book."
+
+
+@pytest.mark.asyncio
+async def test_fetch_summary_falls_back_to_open_library_description(monkeypatch):
     cog = Nominate(bot=SimpleNamespace())
 
-    class DummyResponses:
-        async def create(self, **_kwargs):
-            return SimpleNamespace(output=[])
+    async def failing(_isbn):
+        request = httpx.Request("GET", "https://example.com")
+        response = httpx.Response(500, request=request)
+        raise httpx.HTTPStatusError("boom", request=request, response=response)
 
-    cog.openai_client = SimpleNamespace(responses=DummyResponses())
+    monkeypatch.setattr(cog, "google_books_summary", failing)
 
-    result = await cog.openai_summarize("Title", "Desc")
+    result = await cog.fetch_summary("9781234567897", "Open Library summary")
+
+    assert result == "Open Library summary"
+
+
+@pytest.mark.asyncio
+async def test_fetch_summary_returns_default_when_all_sources_empty(monkeypatch):
+    cog = Nominate(bot=SimpleNamespace())
+
+    async def empty_summary(_isbn):
+        return ""
+
+    monkeypatch.setattr(cog, "google_books_summary", empty_summary)
+
+    result = await cog.fetch_summary("9781234567897", "")
 
     assert result == "No summary available."

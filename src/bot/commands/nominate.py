@@ -5,7 +5,7 @@ from typing import Any
 
 import discord
 import httpx
-import openai
+from bs4 import BeautifulSoup
 from discord import app_commands
 from discord.ext import commands
 from loguru import logger
@@ -27,7 +27,6 @@ ASIN_RE = re.compile(r"/([A-Z0-9]{10})(?:[/?]|$)")
 class Nominate(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.openai_client = openai.AsyncOpenAI(api_key=settings.openai_key)
         self._reaction_refresh_tasks: dict[int, asyncio.Task[None]] = {}
 
     async def _get_nomination_channel(self, channel_id: int):
@@ -162,10 +161,8 @@ class Nominate(commands.Cog):
                 title = meta.get("title", "Unknown Title")
                 subtitle = meta.get("subtitle", "")
                 full_title = f"{title}: {subtitle}" if subtitle else title
-                description = str(
-                    meta.get("description", "")
-                )  # Sometimes this comes through as a nested dict
-                summary = await self.openai_summarize(full_title, description)
+                description = self._normalize_description(meta.get("description", ""))
+                summary = await self.fetch_summary(isbn, description)
                 book = Book(
                     title=full_title,
                     description=description,
@@ -188,8 +185,6 @@ class Nominate(commands.Cog):
             session.add(nomination)
             await session.flush()
             summary_text = book.summary or "No summary available."
-            if book.summary:
-                summary_text += "\n\nNote: AI generated summaries may be inaccurate."
             summary_text += f"\n\nNominated by {interaction.user.mention}."
             if book.length:
                 summary_text += f" {book.length} pages."
@@ -237,19 +232,59 @@ class Nominate(commands.Cog):
             r.raise_for_status()
         return r.json()
 
-    async def openai_summarize(self, title: str, description: str) -> str:
-        response = await self.openai_client.responses.create(
-            model="gpt-4o-mini",
-            instructions="You are a helpful librarian whose job is to convince smart people why they might "
-            "want to read certain books, by giving accurate and compelling summaries of them. "
-            "You are to provide a three-sentence summary of the book..",
-            input=f"Book title: {title}\nDescription: {description}",
+    @staticmethod
+    def _normalize_description(description: Any) -> str:
+        if isinstance(description, dict):
+            description = description.get("value", "")
+        text = BeautifulSoup(str(description or ""), "html.parser").get_text(" ")
+        return " ".join(text.split())
+
+    @staticmethod
+    def _matches_isbn(item: dict[str, Any], isbn: str) -> bool:
+        identifiers = item.get("volumeInfo", {}).get("industryIdentifiers", [])
+        normalized_isbn = isbn.upper()
+        for identifier in identifiers:
+            value = str(identifier.get("identifier", "")).replace("-", "").upper()
+            if value == normalized_isbn:
+                return True
+        return False
+
+    async def google_books_summary(self, isbn: str) -> str:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://www.googleapis.com/books/v1/volumes",
+                params={"q": f"isbn:{isbn}"},
+            )
+            response.raise_for_status()
+
+        data = response.json()
+        items = data.get("items", [])
+        if not items:
+            return ""
+
+        match = next(
+            (item for item in items if self._matches_isbn(item, isbn)),
+            items[0],
         )
-        return (
-            response.output[0].content[0].text.strip()
-            if response.output
-            else "No summary available."
-        )
+        description = match.get("volumeInfo", {}).get("description", "")
+        return self._normalize_description(description)
+
+    async def fetch_summary(self, isbn: str, open_library_description: str) -> str:
+        try:
+            summary = await self.google_books_summary(isbn)
+        except httpx.HTTPError:
+            logger.exception(
+                "Failed to fetch Google Books summary for ISBN {}",
+                isbn,
+            )
+        else:
+            if summary:
+                return summary
+
+        if open_library_description:
+            return open_library_description
+
+        return "No summary available."
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
