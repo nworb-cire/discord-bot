@@ -26,6 +26,7 @@ services:
       - REDIS_URL
       - PREDICTIONS_CHANNEL_ID
       - STAGING
+      - BOOK_MAX_ELECTION_APPEARANCES
 
   db:
     image: postgres:16-alpine
@@ -71,6 +72,7 @@ services:
       - REDIS_URL
       - PREDICTIONS_CHANNEL_ID
       - STAGING
+      - BOOK_MAX_ELECTION_APPEARANCES
 
 
 volumes:
