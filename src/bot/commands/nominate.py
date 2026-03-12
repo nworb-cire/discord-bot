@@ -1,3 +1,4 @@
+import asyncio
 import re
 from contextlib import suppress
 from typing import Any
@@ -27,6 +28,7 @@ class Nominate(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.openai_client = openai.AsyncOpenAI(api_key=settings.openai_key)
+        self._reaction_refresh_tasks: dict[int, asyncio.Task[None]] = {}
 
     async def _get_nomination_channel(self, channel_id: int):
         channel = None
@@ -52,29 +54,56 @@ class Nominate(commands.Cog):
         return len(unique_users)
 
     async def _refresh_nomination_reactions(
-        self, payload: discord.RawReactionActionEvent
+        self, channel_id: int, message_id: int
     ) -> None:
         async with async_session() as session:
-            stmt = select(Nomination).where(Nomination.message_id == payload.message_id)
+            stmt = select(Nomination).where(Nomination.message_id == message_id)
             nomination = (await session.execute(stmt)).scalar_one_or_none()
             if nomination is None:
                 return
-            if payload.user_id == nomination.nominator_discord_id:
-                return
-            channel = await self._get_nomination_channel(payload.channel_id)
+            channel = await self._get_nomination_channel(channel_id)
             if channel is None or not hasattr(channel, "fetch_message"):
                 return
             with suppress(Exception):
-                message = await channel.fetch_message(payload.message_id)
+                message = await channel.fetch_message(message_id)
                 nomination.reactions = await self._count_nomination_reactions(
                     message, exclude_user_id=nomination.nominator_discord_id
                 )
                 session.add(nomination)
                 await session.commit()
 
+    async def _debounced_refresh_nomination_reactions(
+        self, channel_id: int, message_id: int
+    ) -> None:
+        delay = max(0.0, settings.nomination_reaction_refresh_debounce_seconds)
+        try:
+            if delay:
+                await asyncio.sleep(delay)
+            await self._refresh_nomination_reactions(channel_id, message_id)
+        except Exception:
+            logger.exception(
+                "Failed to refresh nomination reactions for message {}",
+                message_id,
+            )
+        finally:
+            self._reaction_refresh_tasks.pop(message_id, None)
+
+    def _schedule_nomination_reaction_refresh(
+        self, channel_id: int, message_id: int
+    ) -> None:
+        existing_task = self._reaction_refresh_tasks.get(message_id)
+        if existing_task is not None and not existing_task.done():
+            return
+        self._reaction_refresh_tasks[message_id] = asyncio.create_task(
+            self._debounced_refresh_nomination_reactions(channel_id, message_id)
+        )
+
     async def _delete_nomination_for_payload(
         self, payload: discord.RawReactionActionEvent
     ) -> None:
+        pending_task = self._reaction_refresh_tasks.pop(payload.message_id, None)
+        if pending_task is not None and not pending_task.done():
+            pending_task.cancel()
         async with async_session() as session:
             stmt = select(Nomination).where(Nomination.message_id == payload.message_id)
             nomination = (await session.execute(stmt)).scalar_one_or_none()
@@ -231,7 +260,9 @@ class Nominate(commands.Cog):
         if str(payload.emoji) == NOMINATION_CANCEL_EMOJI:
             await self._delete_nomination_for_payload(payload)
             return
-        await self._refresh_nomination_reactions(payload)
+        self._schedule_nomination_reaction_refresh(
+            payload.channel_id, payload.message_id
+        )
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
@@ -241,4 +272,6 @@ class Nominate(commands.Cog):
             return
         if str(payload.emoji) == NOMINATION_CANCEL_EMOJI:
             return
-        await self._refresh_nomination_reactions(payload)
+        self._schedule_nomination_reaction_refresh(
+            payload.channel_id, payload.message_id
+        )

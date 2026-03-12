@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     max_election_appearances: int = Field(
         default=3, alias="BOOK_MAX_ELECTION_APPEARANCES"
     )
+    nomination_reaction_refresh_debounce_seconds: float = Field(
+        default=1.0, alias="NOMINATION_REACTION_REFRESH_DEBOUNCE_SECONDS"
+    )
 
     model_config = SettingsConfigDict(env_file=".env")
 

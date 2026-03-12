@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -17,6 +18,11 @@ from tests.utils import (
 )
 
 settings = get_settings()
+
+
+async def flush_tasks():
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
 
 
 class FakeOpenAI:
@@ -227,6 +233,12 @@ async def test_non_cancel_reaction_refreshes_nomination_count(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
     )
+    real_sleep = asyncio.sleep
+
+    async def immediate_sleep(_delay):
+        await real_sleep(0)
+
+    monkeypatch.setattr("bot.commands.nominate.asyncio.sleep", immediate_sleep)
 
     class ReactionMessage:
         def __init__(self):
@@ -261,6 +273,7 @@ async def test_non_cancel_reaction_refreshes_nomination_count(monkeypatch):
     )
 
     await cog.on_raw_reaction_add(payload)
+    await flush_tasks()
 
     assert nomination_row.reactions == 2
     assert session.commit_calls == 1
@@ -280,6 +293,12 @@ async def test_reaction_remove_refreshes_nomination_count(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
     )
+    real_sleep = asyncio.sleep
+
+    async def immediate_sleep(_delay):
+        await real_sleep(0)
+
+    monkeypatch.setattr("bot.commands.nominate.asyncio.sleep", immediate_sleep)
 
     class ReactionMessage:
         def __init__(self):
@@ -307,6 +326,7 @@ async def test_reaction_remove_refreshes_nomination_count(monkeypatch):
     )
 
     await cog.on_raw_reaction_remove(payload)
+    await flush_tasks()
 
     assert nomination_row.reactions == 1
     assert session.commit_calls == 1
@@ -326,9 +346,20 @@ async def test_nominator_reaction_does_not_change_second_count(monkeypatch):
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
     )
+    real_sleep = asyncio.sleep
+
+    async def immediate_sleep(_delay):
+        await real_sleep(0)
+
+    monkeypatch.setattr("bot.commands.nominate.asyncio.sleep", immediate_sleep)
 
     channel = DummyChannel(settings.nom_channel_id)
-    fetch_mock = AsyncMock()
+
+    class ReactionMessage:
+        def __init__(self):
+            self.reactions = [DummyReaction([88, 101, 202], "👍")]
+
+    fetch_mock = AsyncMock(return_value=ReactionMessage())
     channel.fetch_message = fetch_mock
 
     bot = SimpleNamespace(
@@ -346,10 +377,42 @@ async def test_nominator_reaction_does_not_change_second_count(monkeypatch):
     )
 
     await cog.on_raw_reaction_add(payload)
+    await flush_tasks()
 
     assert nomination_row.reactions == 2
-    assert session.commit_calls == 0
-    fetch_mock.assert_not_awaited()
+    assert session.commit_calls == 1
+    fetch_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reaction_refresh_is_debounced(monkeypatch):
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
+    cog = Nominate(bot=SimpleNamespace())
+    real_sleep = asyncio.sleep
+
+    async def immediate_sleep(_delay):
+        await real_sleep(0)
+
+    monkeypatch.setattr("bot.commands.nominate.asyncio.sleep", immediate_sleep)
+    refresh_mock = AsyncMock()
+    monkeypatch.setattr(cog, "_refresh_nomination_reactions", refresh_mock)
+
+    payload = SimpleNamespace(
+        channel_id=settings.nom_channel_id,
+        message_id=1,
+        user_id=101,
+        emoji="👍",
+    )
+
+    await cog.on_raw_reaction_add(payload)
+    await cog.on_raw_reaction_add(payload)
+    await cog.on_raw_reaction_remove(payload)
+    await flush_tasks()
+
+    refresh_mock.assert_awaited_once_with(settings.nom_channel_id, 1)
 
 
 @pytest.mark.asyncio
