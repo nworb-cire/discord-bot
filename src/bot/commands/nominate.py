@@ -28,6 +28,71 @@ class Nominate(commands.Cog):
         self.bot = bot
         self.openai_client = openai.AsyncOpenAI(api_key=settings.openai_key)
 
+    async def _get_nomination_channel(self, channel_id: int):
+        channel = None
+        if hasattr(self.bot, "get_channel"):
+            channel = self.bot.get_channel(channel_id)
+        if channel is None and hasattr(self.bot, "fetch_channel"):
+            channel = await self.bot.fetch_channel(channel_id)
+        return channel
+
+    @staticmethod
+    async def _count_nomination_reactions(
+        message: Any, *, exclude_user_id: int | None = None
+    ) -> int:
+        unique_users: set[int] = set()
+        for reaction in getattr(message, "reactions", []):
+            emoji = getattr(reaction, "emoji", reaction)
+            if str(emoji) == NOMINATION_CANCEL_EMOJI:
+                continue
+            async for user in reaction.users():
+                unique_users.add(user.id)
+        if exclude_user_id is not None:
+            unique_users.discard(exclude_user_id)
+        return len(unique_users)
+
+    async def _refresh_nomination_reactions(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
+        async with async_session() as session:
+            stmt = select(Nomination).where(Nomination.message_id == payload.message_id)
+            nomination = (await session.execute(stmt)).scalar_one_or_none()
+            if nomination is None:
+                return
+            if payload.user_id == nomination.nominator_discord_id:
+                return
+            channel = await self._get_nomination_channel(payload.channel_id)
+            if channel is None or not hasattr(channel, "fetch_message"):
+                return
+            with suppress(Exception):
+                message = await channel.fetch_message(payload.message_id)
+                nomination.reactions = await self._count_nomination_reactions(
+                    message, exclude_user_id=nomination.nominator_discord_id
+                )
+                session.add(nomination)
+                await session.commit()
+
+    async def _delete_nomination_for_payload(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
+        async with async_session() as session:
+            stmt = select(Nomination).where(Nomination.message_id == payload.message_id)
+            nomination = (await session.execute(stmt)).scalar_one_or_none()
+            if not nomination or payload.user_id != nomination.nominator_discord_id:
+                return
+
+            channel = await self._get_nomination_channel(payload.channel_id)
+            if channel is not None and hasattr(channel, "fetch_message"):
+                with suppress(Exception):
+                    message = await channel.fetch_message(payload.message_id)
+                    await message.delete()
+
+            book = await session.get(Book, nomination.book_id)
+            await session.delete(nomination)
+            if book is not None:
+                await session.delete(book)
+            await session.commit()
+
     @app_commands.command(
         name="nominate",
         description="Nominate a book by its ISBN",
@@ -161,30 +226,19 @@ class Nominate(commands.Cog):
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         if payload.channel_id != settings.nom_channel_id:
             return
-        if str(payload.emoji) != NOMINATION_CANCEL_EMOJI:
+        if payload.user_id == getattr(getattr(self.bot, "user", None), "id", None):
+            return
+        if str(payload.emoji) == NOMINATION_CANCEL_EMOJI:
+            await self._delete_nomination_for_payload(payload)
+            return
+        await self._refresh_nomination_reactions(payload)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+        if payload.channel_id != settings.nom_channel_id:
             return
         if payload.user_id == getattr(getattr(self.bot, "user", None), "id", None):
             return
-
-        async with async_session() as session:
-            stmt = select(Nomination).where(Nomination.message_id == payload.message_id)
-            nomination = (await session.execute(stmt)).scalar_one_or_none()
-            if not nomination or payload.user_id != nomination.nominator_discord_id:
-                return
-
-            channel = None
-            if hasattr(self.bot, "get_channel"):
-                channel = self.bot.get_channel(payload.channel_id)
-            if channel is None and hasattr(self.bot, "fetch_channel"):
-                channel = await self.bot.fetch_channel(payload.channel_id)
-
-            if channel is not None:
-                with suppress(Exception):
-                    message = await channel.fetch_message(payload.message_id)
-                    await message.delete()
-
-            book = await session.get(Book, nomination.book_id)
-            await session.delete(nomination)
-            if book is not None:
-                await session.delete(book)
-            await session.commit()
+        if str(payload.emoji) == NOMINATION_CANCEL_EMOJI:
+            return
+        await self._refresh_nomination_reactions(payload)

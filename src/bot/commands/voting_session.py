@@ -144,7 +144,6 @@ class VotingSession(commands.Cog):
         await session.commit()
 
     async def get_top_noms(self, session, limit: int = 0) -> list[BallotNominee]:
-        await self.update_all_nominations(session)
         sub_votes = (
             select(Vote.book_id, func.sum(Vote.weight).label("vote_sum"))
             .group_by(Vote.book_id)

@@ -47,6 +47,35 @@ async def test_get_top_noms_returns_scores(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_top_noms_uses_stored_reaction_counts(monkeypatch):
+    created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    session = DummySession(
+        execute_results=[
+            DummyResult(
+                rows=[
+                    SimpleNamespace(
+                        book_id=1,
+                        reactions=4,
+                        vote_sum=0.0,
+                        score=4.0,
+                        appearance_count=0,
+                        created_at=created_at,
+                    )
+                ]
+            )
+        ]
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    refresh_mock = AsyncMock()
+    monkeypatch.setattr(vs, "update_all_nominations", refresh_mock)
+
+    result = await vs.get_top_noms(session, limit=1)
+
+    assert result == [BallotNominee(1, 4, 0.0, 4.0, 0, created_at=created_at)]
+    refresh_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_get_top_noms_requires_seconding(monkeypatch):
     session = DummySession(execute_results=[DummyResult(rows=[])])
     vs = VotingSession(bot=SimpleNamespace())

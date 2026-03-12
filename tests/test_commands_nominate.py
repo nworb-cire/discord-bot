@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -21,6 +22,27 @@ settings = get_settings()
 class FakeOpenAI:
     def __init__(self, **_kwargs):
         self.responses = SimpleNamespace(create=None)
+
+
+class DummyUsers:
+    def __init__(self, ids):
+        self.ids = ids
+
+    def __aiter__(self):
+        async def generator():
+            for uid in self.ids:
+                yield SimpleNamespace(id=uid)
+
+        return generator()
+
+
+class DummyReaction:
+    def __init__(self, ids, emoji):
+        self._ids = ids
+        self.emoji = emoji
+
+    def users(self):
+        return DummyUsers(self._ids)
 
 
 @pytest.mark.asyncio
@@ -189,6 +211,145 @@ async def test_cancel_reaction_ignored_for_other_users(monkeypatch):
     assert message.deleted is False
     assert session.deleted == []
     assert session.commit_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_non_cancel_reaction_refreshes_nomination_count(monkeypatch):
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
+
+    nomination_row = SimpleNamespace(
+        book_id=7, nominator_discord_id=88, message_id=1, reactions=0
+    )
+    session = DummySession(execute_results=[DummyResult(scalar=nomination_row)])
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
+
+    class ReactionMessage:
+        def __init__(self):
+            self.reactions = [
+                DummyReaction([88, 101], "👍"),
+                DummyReaction([101, 202], "🔥"),
+                DummyReaction([303], NOMINATION_CANCEL_EMOJI),
+            ]
+
+    channel = DummyChannel(settings.nom_channel_id)
+
+    async def fetch_message(_message_id):
+        return ReactionMessage()
+
+    channel.fetch_message = fetch_message
+
+    async def fetch_channel(_cid):
+        return channel
+
+    bot = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=fetch_channel,
+        user=SimpleNamespace(id=999),
+    )
+    cog = Nominate(bot=bot)
+
+    payload = SimpleNamespace(
+        channel_id=settings.nom_channel_id,
+        message_id=1,
+        user_id=101,
+        emoji="👍",
+    )
+
+    await cog.on_raw_reaction_add(payload)
+
+    assert nomination_row.reactions == 2
+    assert session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_reaction_remove_refreshes_nomination_count(monkeypatch):
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
+
+    nomination_row = SimpleNamespace(
+        book_id=7, nominator_discord_id=88, message_id=1, reactions=3
+    )
+    session = DummySession(execute_results=[DummyResult(scalar=nomination_row)])
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
+
+    class ReactionMessage:
+        def __init__(self):
+            self.reactions = [DummyReaction([202], "👍")]
+
+    channel = DummyChannel(settings.nom_channel_id)
+
+    async def fetch_message(_message_id):
+        return ReactionMessage()
+
+    channel.fetch_message = fetch_message
+
+    bot = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=AsyncMock(return_value=channel),
+        user=SimpleNamespace(id=999),
+    )
+    cog = Nominate(bot=bot)
+
+    payload = SimpleNamespace(
+        channel_id=settings.nom_channel_id,
+        message_id=1,
+        user_id=101,
+        emoji="👍",
+    )
+
+    await cog.on_raw_reaction_remove(payload)
+
+    assert nomination_row.reactions == 1
+    assert session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_nominator_reaction_does_not_change_second_count(monkeypatch):
+    monkeypatch.setattr(
+        "bot.commands.nominate.openai.AsyncOpenAI",
+        lambda **kwargs: FakeOpenAI(**kwargs),
+    )
+
+    nomination_row = SimpleNamespace(
+        book_id=7, nominator_discord_id=88, message_id=1, reactions=2
+    )
+    session = DummySession(execute_results=[DummyResult(scalar=nomination_row)])
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
+
+    channel = DummyChannel(settings.nom_channel_id)
+    fetch_mock = AsyncMock()
+    channel.fetch_message = fetch_mock
+
+    bot = SimpleNamespace(
+        get_channel=lambda _cid: channel,
+        fetch_channel=AsyncMock(return_value=channel),
+        user=SimpleNamespace(id=999),
+    )
+    cog = Nominate(bot=bot)
+
+    payload = SimpleNamespace(
+        channel_id=settings.nom_channel_id,
+        message_id=1,
+        user_id=88,
+        emoji="👍",
+    )
+
+    await cog.on_raw_reaction_add(payload)
+
+    assert nomination_row.reactions == 2
+    assert session.commit_calls == 0
+    fetch_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
