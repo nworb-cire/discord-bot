@@ -58,10 +58,16 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 Install the provided pre-commit hook so commits run the unit test suite automatically.
 
 ```bash
-uv tool run pre-commit install --hook-type pre-commit
+uv tool run pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
-The hook runs `uv run pytest tests` on each commit. Set `SKIP=unit-tests` when committing if you need to bypass it temporarily. The hook pins `UV_CACHE_DIR=.uv-cache` so it can write inside the repo sandbox.
+The `pre-commit` hook runs `PYTHONPATH=src python -m bot.test_gate` in `pre-commit` mode, which uses `pytest-testmon` to rerun only impacted unit tests after its initial seed run. The `pre-push` hook runs the full unit suite with source-only coverage against `src/bot`.
+
+Set `SKIP=unit-tests` when committing if you need to bypass the pre-commit gate temporarily, or `SKIP=unit-tests-full` when pushing if you need to bypass the full local coverage gate. The hooks pin `UV_CACHE_DIR=.uv-cache` so they can write inside the repo sandbox.
+
+The first `pytest-testmon` run populates `.testmondata` and will be similar to a full test run. Later runs are much faster when changes only affect part of the dependency graph.
+
+The full coverage gate defaults to `BOT_TEST_COVERAGE_FAIL_UNDER=90`. Override that env var if you need a stricter local threshold while raising coverage.
 
 Secret scanning is enforced via `detect-secrets`. If you add configuration files or text that triggers the scanner, regenerate the baseline and audit the findings:
 

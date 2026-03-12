@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  e2e:
+  tests:
     runs-on: ubuntu-latest
 
     permissions:
@@ -13,8 +13,13 @@ jobs:
 
     env:
       PYTHONUNBUFFERED: "1"
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      UV_CACHE_DIR: .uv-cache
       TESTCONTAINERS_RYUK_DISABLED: "false"
+      BOT_TEST_GATE_MODE: ci
+      BOT_TEST_COVERAGE_FAIL_UNDER: "90"
+      BOT_TEST_JUNIT_XML: reports/junit.xml
+      BOT_TEST_COVERAGE_XML: reports/coverage.xml
+      BOT_TEST_DURATIONS: "10"
 
     steps:
       - name: Checkout
@@ -23,18 +28,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: "3.12"
 
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpq-dev
-
-      - name: Install Python deps
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Pre-pull Postgres image for Testcontainers
         run: |
@@ -43,11 +42,7 @@ jobs:
       - name: Run tests
         run: |
           mkdir -p reports
-          pytest -n auto \
-            --maxfail=1 \
-            --durations=10 \
-            --junitxml=reports/junit.xml \
-            --cov=bot --cov-report=xml:reports/coverage.xml --cov-report=term-missing
+          PYTHONPATH=src uv run --extra dev python -m bot.test_gate
 
       - name: Upload test reports
         if: always()

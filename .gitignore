@@ -20,6 +20,7 @@ htmlcov/
 .coverage
 .tox/
 .pytest_cache/
+.testmondata*
 
 # Logs and dumps
 *.log

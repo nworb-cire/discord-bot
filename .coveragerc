@@ -1,3 +1,5 @@
 [run]
+source =
+    src/bot
 omit =
     tests/e2e/*
