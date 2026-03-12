@@ -166,6 +166,42 @@ async def test_get_top_noms_uses_created_at_for_tiebreak(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_top_noms_does_not_demote_prior_appearances(monkeypatch):
+    created_first = datetime(2023, 5, 1, tzinfo=timezone.utc)
+    created_second = datetime(2023, 6, 1, tzinfo=timezone.utc)
+    session = DummySession(
+        execute_results=[
+            DummyResult(
+                rows=[
+                    SimpleNamespace(
+                        book_id=1,
+                        reactions=1,
+                        vote_sum=0.0,
+                        score=1.0,
+                        appearance_count=0,
+                        created_at=created_first,
+                    ),
+                    SimpleNamespace(
+                        book_id=2,
+                        reactions=3,
+                        vote_sum=7.0,
+                        score=10.0,
+                        appearance_count=1,
+                        created_at=created_second,
+                    ),
+                ]
+            )
+        ]
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
+
+    result = await vs.get_top_noms(session, limit=0)
+
+    assert [nom.book_id for nom in result] == [2, 1]
+
+
+@pytest.mark.asyncio
 async def test_open_voting_aborts_if_open(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()

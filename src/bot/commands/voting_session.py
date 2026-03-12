@@ -221,14 +221,11 @@ class VotingSession(commands.Cog):
                     created_at=created_at,
                 )
             )
-        max_score = max(c.score for c in candidates)
         ordered_entries = [
             nominee
             for nominee in sorted(
                 candidates,
                 key=lambda item: (
-                    item.score != max_score,
-                    item.prior_appearances > 0,
                     -item.score,
                     item.created_at.timestamp(),
                 ),
