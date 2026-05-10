@@ -1,0 +1,82 @@
+services:
+  bot:
+    image: ghcr.io/nworb-cire/bookclub-bot:staging
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      - DISCORD_BOT_TOKEN
+      - BOOKCLUB_CHANNEL_ID
+      - BOOKCLUB_NOM_CHANNEL_ID
+      - BOOKCLUB_RESULTS_CHANNEL_ID
+      - BOOKCLUB_ROLE_ID
+      - VOTE_WEIGHT_INNER
+      - VOTE_WEIGHT_OUTER
+      - OPENAI_API_KEY
+      - OPENAI_BOOK_LOOKUP_MODEL
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+      - GOOGLE_CALENDAR_ID
+      - DISCORD_GUILD_ID
+      - DATABASE_URL
+      - REDIS_URL
+      - PREDICTIONS_CHANNEL_ID
+      - STAGING
+      - BOOK_MAX_ELECTION_APPEARANCES
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bookclub
+      POSTGRES_PASSWORD: bookclub # pragma: allowlist secret
+      POSTGRES_DB: bookclub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookclub"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  migrate:
+    image: ghcr.io/nworb-cire/bookclub-bot:staging
+    depends_on:
+      db:
+        condition: service_healthy
+    command: "alembic upgrade head"
+    restart: "no"
+    environment:
+      - DISCORD_BOT_TOKEN
+      - BOOKCLUB_CHANNEL_ID
+      - BOOKCLUB_NOM_CHANNEL_ID
+      - BOOKCLUB_RESULTS_CHANNEL_ID
+      - BOOKCLUB_ROLE_ID
+      - VOTE_WEIGHT_INNER
+      - VOTE_WEIGHT_OUTER
+      - OPENAI_API_KEY
+      - OPENAI_BOOK_LOOKUP_MODEL
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+      - GOOGLE_CALENDAR_ID
+      - DISCORD_GUILD_ID
+      - DATABASE_URL
+      - REDIS_URL
+      - PREDICTIONS_CHANNEL_ID
+      - STAGING
+      - BOOK_MAX_ELECTION_APPEARANCES
+
+
+volumes:
+  pgdata:
+  redisdata:
