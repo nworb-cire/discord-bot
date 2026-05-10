@@ -1,12 +1,12 @@
 # migrations/env.py
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
-from bot.config import get_settings
 from bot.db import Base
 
 # this is the Alembic Config object
@@ -16,9 +16,11 @@ fileConfig(config.config_file_name)
 # add your model’s MetaData object here
 target_metadata = Base.metadata
 
-# override URL from settings
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Let migrations run with only database configuration present. This avoids requiring
+# unrelated bot settings, such as Discord and Google credentials, in one-off jobs.
+database_url = os.environ.get("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
 
 
 def run_sync_migrations(connection):

@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+from functools import lru_cache
+
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
+    AsyncSession,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import (
@@ -18,9 +23,20 @@ from sqlalchemy import (
 from datetime import datetime
 from bot.config import get_settings
 
-settings = get_settings()
-engine = create_async_engine(settings.database_url, echo=False, future=True)
-async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+@lru_cache
+def get_engine():
+    settings = get_settings()
+    return create_async_engine(settings.database_url, echo=False, future=True)
+
+
+@lru_cache
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(get_engine(), expire_on_commit=False)
+
+
+def async_session() -> AsyncSession:
+    return get_sessionmaker()()
 
 
 class Base(DeclarativeBase):
