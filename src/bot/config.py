@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     weight_outer: int = Field(alias="VOTE_WEIGHT_OUTER")
     database_url: str = Field(alias="DATABASE_URL")
     redis_url: str = Field(alias="REDIS_URL")
+    openai_api_key: str = Field(alias="OPENAI_API_KEY")
+    openai_book_lookup_model: str = Field(
+        default="gpt-5-mini", alias="OPENAI_BOOK_LOOKUP_MODEL"
+    )
     google_service_account_email: str = Field(alias="GOOGLE_SERVICE_ACCOUNT_EMAIL")
     google_service_account_private_key: str = Field(
         alias="GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"

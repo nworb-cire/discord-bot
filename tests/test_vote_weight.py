@@ -8,3 +8,15 @@ def test_vote_weights(monkeypatch):
     s = Settings()
     assert s.weight_inner == 200
     assert s.weight_outer == 50
+
+
+def test_openai_book_lookup_settings(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")  # pragma: allowlist secret
+    monkeypatch.delenv("OPENAI_BOOK_LOOKUP_MODEL", raising=False)
+    s = Settings()
+    assert s.openai_api_key == "test-key"  # pragma: allowlist secret
+    assert s.openai_book_lookup_model == "gpt-5-mini"
+
+    monkeypatch.setenv("OPENAI_BOOK_LOOKUP_MODEL", "custom-model")
+    s = Settings()
+    assert s.openai_book_lookup_model == "custom-model"
