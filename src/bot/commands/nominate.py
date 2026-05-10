@@ -25,6 +25,7 @@ ISBN_RE = re.compile(r"[^0-9Xx]")
 LOOKUP_ERROR_MESSAGE = (
     "Failed to look up book details with OpenAI. Please try again later."
 )
+MAX_LOG_QUERY_LENGTH = 500
 
 
 class BookLookupError(Exception):
@@ -95,6 +96,31 @@ class BookLookupResult(BaseModel):
     @property
     def preferred_isbn(self) -> str | None:
         return self.isbn_13 or self.isbn_10
+
+
+def _log_text(value: str, max_length: int = MAX_LOG_QUERY_LENGTH) -> str:
+    value = " ".join(str(value).split())
+    if len(value) <= max_length:
+        return value
+    return f"{value[: max_length - 3]}..."
+
+
+def _openai_error_details(exc: BaseException) -> dict[str, Any]:
+    return {
+        "type": type(exc).__name__,
+        "status_code": getattr(exc, "status_code", None),
+        "request_id": getattr(exc, "request_id", None),
+        "code": getattr(exc, "code", None),
+    }
+
+
+def _openai_response_details(response: Any) -> dict[str, Any]:
+    return {
+        "id": getattr(response, "id", None),
+        "model": getattr(response, "model", None),
+        "status": getattr(response, "status", None),
+        "usage": getattr(response, "usage", None),
+    }
 
 
 class Nominate(commands.Cog):
@@ -209,7 +235,10 @@ class Nominate(commands.Cog):
             try:
                 lookup = await self.lookup_book(query)
             except BookLookupError:
-                logger.exception("Failed to look up book details for query")
+                logger.exception(
+                    "Failed to look up book details for nomination query={!r}",
+                    _log_text(query),
+                )
                 await interaction.followup.send(
                     LOOKUP_ERROR_MESSAGE,
                     ephemeral=True,
@@ -376,6 +405,12 @@ class Nominate(commands.Cog):
 
     async def lookup_book(self, query: str) -> BookLookupResult:
         client = AsyncOpenAI(api_key=settings.openai_api_key)
+        log_query = _log_text(query)
+        logger.info(
+            "Looking up book nomination with OpenAI model={} query={!r}",
+            settings.openai_book_lookup_model,
+            log_query,
+        )
         try:
             response = await client.responses.parse(
                 model=settings.openai_book_lookup_model,
@@ -396,12 +431,46 @@ class Nominate(commands.Cog):
                 tools=[{"type": "web_search", "search_context_size": "medium"}],
                 max_output_tokens=1200,
             )
-        except (OpenAIError, ValidationError, ValueError) as exc:
+        except OpenAIError as exc:
+            logger.exception(
+                "OpenAI book lookup request failed query={!r} model={} details={}",
+                log_query,
+                settings.openai_book_lookup_model,
+                _openai_error_details(exc),
+            )
+            raise BookLookupError from exc
+        except (ValidationError, ValueError) as exc:
+            logger.exception(
+                "OpenAI book lookup returned invalid structured metadata "
+                "query={!r} model={} error_type={}",
+                log_query,
+                settings.openai_book_lookup_model,
+                type(exc).__name__,
+            )
             raise BookLookupError from exc
 
         lookup = response.output_parsed
         if not isinstance(lookup, BookLookupResult):
+            logger.error(
+                "OpenAI book lookup response did not include parsed book metadata "
+                "query={!r} model={} parsed_type={} response={}",
+                log_query,
+                settings.openai_book_lookup_model,
+                type(lookup).__name__,
+                _openai_response_details(response),
+            )
             raise BookLookupError("OpenAI did not return book metadata")
+        logger.info(
+            "OpenAI book lookup resolved query={!r} title={!r} authors={} "
+            "isbn_10={} isbn_13={} page_count={} response={}",
+            log_query,
+            lookup.full_title,
+            lookup.authors,
+            lookup.isbn_10,
+            lookup.isbn_13,
+            lookup.page_count,
+            _openai_response_details(response),
+        )
         return lookup
 
     @commands.Cog.listener()
