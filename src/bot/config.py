@@ -34,7 +34,7 @@ class Settings(BaseSettings):
         default=1.0, alias="NOMINATION_REACTION_REFRESH_DEBOUNCE_SECONDS"
     )
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 @lru_cache

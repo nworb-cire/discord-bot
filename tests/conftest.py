@@ -35,6 +35,7 @@ _DEFAULT_ENV = {
     "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
     "REDIS_URL": "redis://localhost:6379/0",
     "OPENAI_API_KEY": "test-openai-api-key",  # pragma: allowlist secret
+    "STAGING": "false",
     "GOOGLE_SERVICE_ACCOUNT_EMAIL": "calendar-writer@example.com",
     "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY": "test-google-private-key",  # pragma: allowlist secret
     "GOOGLE_CALENDAR_ID": "test-calendar-id",
