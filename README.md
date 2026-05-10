@@ -6,7 +6,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 
 ## Features
 
-* `/nominate <isbn>`: Fetch book metadata from Open Library and summaries from Google Books.
+* `/nominate <query>`: Resolve book metadata and summaries from ISBNs, titles, or title/author queries using OpenAI web search.
 * `/open_voting [hours]`: Open a time-limited election with a ranked ballot.
 * `/vote`: Allocate weighted votes per election.
 * `/close_voting`: Close elections early and post results with discussion threads.
