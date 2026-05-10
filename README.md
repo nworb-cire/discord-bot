@@ -40,6 +40,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    REDIS_URL=redis://redis:6379/0
    OPENAI_API_KEY=your_openai_api_key
    OPENAI_BOOK_LOOKUP_MODEL=gpt-5-mini
+   OPENAI_BOOK_LOOKUP_REASONING_EFFORT=low
    PREDICTIONS_CHANNEL_ID=1234567893
    STAGING=false
    BOOK_MAX_ELECTION_APPEARANCES=3

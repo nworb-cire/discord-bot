@@ -16,7 +16,7 @@ def test_openai_book_lookup_settings(monkeypatch):
     s = Settings()
     assert s.openai_api_key == "test-key"  # pragma: allowlist secret
     assert s.openai_book_lookup_model == "gpt-5-mini"
-    assert s.openai_book_lookup_reasoning_effort == "minimal"
+    assert s.openai_book_lookup_reasoning_effort == "low"
     assert s.openai_book_lookup_max_output_tokens == 4000
 
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_MODEL", "custom-model")
