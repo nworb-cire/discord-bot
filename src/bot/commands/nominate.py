@@ -218,13 +218,16 @@ class Nominate(commands.Cog):
 
             book = await self._find_duplicate_book(session, lookup)
             if book:
-                await interaction.followup.send(
-                    f"*{book.title}* has previously been nominated.",
-                    ephemeral=True,
-                )
-                return
+                nomination = await self._find_nomination_for_book(session, book)
+                if nomination is not None:
+                    await interaction.followup.send(
+                        f"*{book.title}* has previously been nominated.",
+                        ephemeral=True,
+                    )
+                    return
+            else:
+                book = await self._create_book(session, lookup)
 
-            book = await self._create_book(session, lookup)
             nomination = await self._create_nomination(
                 session, book, interaction.user.id
             )
@@ -367,6 +370,11 @@ class Nominate(commands.Cog):
             ):
                 return book
         return None
+
+    @staticmethod
+    async def _find_nomination_for_book(session: Any, book: Book) -> Nomination | None:
+        stmt = select(Nomination).where(Nomination.book_id == book.id)
+        return (await session.execute(stmt)).scalar_one_or_none()
 
     async def lookup_book(self, query: str) -> BookLookupResult:
         client = AsyncOpenAI(api_key=settings.openai_api_key)
