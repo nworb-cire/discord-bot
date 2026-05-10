@@ -205,8 +205,6 @@ class Nominate(commands.Cog):
         if not query:
             raise UserFacingError("Please provide a book title, author, or ISBN.")
 
-        full_title = ""
-
         async with async_session() as session:
             try:
                 lookup = await self.lookup_book(query)
@@ -219,79 +217,107 @@ class Nominate(commands.Cog):
                 return
 
             book = await self._find_duplicate_book(session, lookup)
-
             if book:
                 await interaction.followup.send(
                     f"*{book.title}* has previously been nominated.",
                     ephemeral=True,
                 )
                 return
-            else:
-                full_title = lookup.full_title
-                book = Book(
-                    title=full_title,
-                    description=lookup.description or "",
-                    summary=lookup.summary,
-                    isbn=lookup.preferred_isbn,
-                    isbn_10=lookup.isbn_10,
-                    isbn_13=lookup.isbn_13,
-                    authors=lookup.authors,
-                    primary_author=lookup.authors[0],
-                    length=lookup.page_count,
-                )
-                session.add(book)
-                await session.flush()
-                logger.info("Inserted new book {}", book.title)
 
-            # TODO: Add new nomination only if it needs to be re-nominated, else return a message to the user
-            nomination = Nomination(
-                book_id=book.id,
-                nominator_discord_id=interaction.user.id,
-                message_id=0,
-                reactions=0,
-                created_at=utcnow(),
+            book = await self._create_book(session, lookup)
+            nomination = await self._create_nomination(
+                session, book, interaction.user.id
             )
-            session.add(nomination)
-            await session.flush()
-            summary_text = book.summary or "No summary available."
-            summary_text += f"\n\nNominated by {interaction.user.mention}."
-            if book.length:
-                summary_text += f" {book.length} pages."
-            embed = discord.Embed(title=book.title, description=summary_text)
-            channel = None
-            client = getattr(interaction, "client", None)
-            if client and hasattr(client, "get_channel"):
-                channel = client.get_channel(settings.nom_channel_id)
-            if channel is None and client and hasattr(client, "fetch_channel"):
-                channel = await client.fetch_channel(settings.nom_channel_id)
-            if channel is None:
-                await session.rollback()
-                raise UserFacingError(
-                    "Unable to locate the nominations channel. Please contact an admin."
-                )
-            try:
-                message = await channel.send(embed=embed)
-            except Exception:
-                await session.rollback()
-                logger.exception(
-                    "Failed to send nomination message to channel {}",
-                    settings.nom_channel_id,
-                )
-                raise UserFacingError(
-                    "Failed to post nomination. Please try again later."
-                )
-            await message.add_reaction(NOMINATION_CANCEL_EMOJI)
-            nomination.message_id = message.id
-            session.add(nomination)
+            await self._post_nomination_message(session, interaction, book, nomination)
             await session.commit()
 
-        await interaction.followup.send(
-            f"Nominated *{full_title or book.title}*", ephemeral=True
-        )
+        await interaction.followup.send(f"Nominated *{book.title}*", ephemeral=True)
         if interaction.channel.id != settings.nom_channel_id:
             await interaction.channel.send(
-                f"{interaction.user.mention} nominated *{full_title or book.title}*"
+                f"{interaction.user.mention} nominated *{book.title}*"
             )
+
+    @staticmethod
+    def _book_from_lookup(lookup: BookLookupResult) -> Book:
+        return Book(
+            title=lookup.full_title,
+            description=lookup.description or "",
+            summary=lookup.summary,
+            isbn=lookup.preferred_isbn,
+            isbn_10=lookup.isbn_10,
+            isbn_13=lookup.isbn_13,
+            authors=lookup.authors,
+            primary_author=lookup.authors[0],
+            length=lookup.page_count,
+        )
+
+    async def _create_book(self, session: Any, lookup: BookLookupResult) -> Book:
+        book = self._book_from_lookup(lookup)
+        session.add(book)
+        await session.flush()
+        logger.info("Inserted new book {}", book.title)
+        return book
+
+    @staticmethod
+    async def _create_nomination(
+        session: Any, book: Book, nominator_discord_id: int
+    ) -> Nomination:
+        nomination = Nomination(
+            book_id=book.id,
+            nominator_discord_id=nominator_discord_id,
+            message_id=0,
+            reactions=0,
+            created_at=utcnow(),
+        )
+        session.add(nomination)
+        await session.flush()
+        return nomination
+
+    @staticmethod
+    def _nomination_embed(book: Book, nominator_mention: str) -> discord.Embed:
+        summary_text = book.summary or "No summary available."
+        summary_text += f"\n\nNominated by {nominator_mention}."
+        if book.length:
+            summary_text += f" {book.length} pages."
+        return discord.Embed(title=book.title, description=summary_text)
+
+    @staticmethod
+    async def _resolve_nomination_channel(interaction: discord.Interaction):
+        channel = None
+        client = getattr(interaction, "client", None)
+        if client and hasattr(client, "get_channel"):
+            channel = client.get_channel(settings.nom_channel_id)
+        if channel is None and client and hasattr(client, "fetch_channel"):
+            channel = await client.fetch_channel(settings.nom_channel_id)
+        return channel
+
+    async def _post_nomination_message(
+        self,
+        session: Any,
+        interaction: discord.Interaction,
+        book: Book,
+        nomination: Nomination,
+    ) -> None:
+        channel = await self._resolve_nomination_channel(interaction)
+        if channel is None:
+            await session.rollback()
+            raise UserFacingError(
+                "Unable to locate the nominations channel. Please contact an admin."
+            )
+        try:
+            message = await channel.send(
+                embed=self._nomination_embed(book, interaction.user.mention)
+            )
+        except Exception:
+            await session.rollback()
+            logger.exception(
+                "Failed to send nomination message to channel {}",
+                settings.nom_channel_id,
+            )
+            raise UserFacingError("Failed to post nomination. Please try again later.")
+        await message.add_reaction(NOMINATION_CANCEL_EMOJI)
+        nomination.message_id = message.id
+        session.add(nomination)
 
     @staticmethod
     def _normalize_match_text(value: str | None) -> str:
