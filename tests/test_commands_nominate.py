@@ -654,6 +654,10 @@ async def test_lookup_book_uses_openai_structured_output(monkeypatch):
     assert kwargs["model"] == settings.openai_book_lookup_model
     assert kwargs["text_format"] is BookLookupResult
     assert kwargs["tools"] == [{"type": "web_search", "search_context_size": "medium"}]
+    assert kwargs["reasoning"] == {
+        "effort": settings.openai_book_lookup_reasoning_effort
+    }
+    assert kwargs["max_output_tokens"] == settings.openai_book_lookup_max_output_tokens
 
 
 @pytest.mark.asyncio
@@ -668,6 +672,27 @@ async def test_lookup_book_rejects_invalid_structured_output(monkeypatch):
     cog = Nominate(bot=SimpleNamespace())
 
     with pytest.raises(BookLookupError):
+        await cog.lookup_book("Common Sense")
+
+
+@pytest.mark.asyncio
+async def test_lookup_book_rejects_incomplete_response(monkeypatch):
+    parse_mock = AsyncMock(
+        return_value=SimpleNamespace(
+            output_parsed=None,
+            status="incomplete",
+            incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+        )
+    )
+
+    class DummyOpenAI:
+        def __init__(self, *, api_key):
+            self.responses = SimpleNamespace(parse=parse_mock)
+
+    monkeypatch.setattr("bot.commands.nominate.AsyncOpenAI", DummyOpenAI)
+    cog = Nominate(bot=SimpleNamespace())
+
+    with pytest.raises(BookLookupError, match="incomplete"):
         await cog.lookup_book("Common Sense")
 
 

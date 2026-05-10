@@ -119,6 +119,7 @@ def _openai_response_details(response: Any) -> dict[str, Any]:
         "id": getattr(response, "id", None),
         "model": getattr(response, "model", None),
         "status": getattr(response, "status", None),
+        "incomplete_details": getattr(response, "incomplete_details", None),
         "usage": getattr(response, "usage", None),
     }
 
@@ -414,6 +415,7 @@ class Nominate(commands.Cog):
         try:
             response = await client.responses.parse(
                 model=settings.openai_book_lookup_model,
+                reasoning={"effort": settings.openai_book_lookup_reasoning_effort},
                 instructions=(
                     "You resolve book nominations for a Discord book club. "
                     "Use web search to identify the best matching real book for "
@@ -429,7 +431,7 @@ class Nominate(commands.Cog):
                 ),
                 text_format=BookLookupResult,
                 tools=[{"type": "web_search", "search_context_size": "medium"}],
-                max_output_tokens=1200,
+                max_output_tokens=settings.openai_book_lookup_max_output_tokens,
             )
         except OpenAIError as exc:
             logger.exception(
@@ -451,6 +453,16 @@ class Nominate(commands.Cog):
 
         lookup = response.output_parsed
         if not isinstance(lookup, BookLookupResult):
+            response_status = getattr(response, "status", None)
+            if response_status == "incomplete":
+                logger.error(
+                    "OpenAI book lookup response was incomplete before returning "
+                    "parsed book metadata query={!r} model={} response={}",
+                    log_query,
+                    settings.openai_book_lookup_model,
+                    _openai_response_details(response),
+                )
+                raise BookLookupError("OpenAI book lookup response was incomplete")
             logger.error(
                 "OpenAI book lookup response did not include parsed book metadata "
                 "query={!r} model={} parsed_type={} response={}",

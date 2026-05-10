@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     openai_book_lookup_model: str = Field(
         default="gpt-5-mini", alias="OPENAI_BOOK_LOOKUP_MODEL"
     )
+    openai_book_lookup_reasoning_effort: str = Field(
+        default="low", alias="OPENAI_BOOK_LOOKUP_REASONING_EFFORT"
+    )
+    openai_book_lookup_max_output_tokens: int = Field(
+        default=4000, alias="OPENAI_BOOK_LOOKUP_MAX_OUTPUT_TOKENS"
+    )
     google_service_account_email: str | None = Field(
         default=None, alias="GOOGLE_SERVICE_ACCOUNT_EMAIL"
     )
