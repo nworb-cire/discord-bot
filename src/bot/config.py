@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         default="gpt-5-mini", alias="OPENAI_BOOK_LOOKUP_MODEL"
     )
     openai_book_lookup_reasoning_effort: str = Field(
-        default="low", alias="OPENAI_BOOK_LOOKUP_REASONING_EFFORT"
+        default="minimal", alias="OPENAI_BOOK_LOOKUP_REASONING_EFFORT"
     )
     openai_book_lookup_max_output_tokens: int = Field(
         default=4000, alias="OPENAI_BOOK_LOOKUP_MAX_OUTPUT_TOKENS"
