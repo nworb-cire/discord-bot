@@ -417,13 +417,19 @@ class Nominate(commands.Cog):
                 model=settings.openai_book_lookup_model,
                 reasoning={"effort": settings.openai_book_lookup_reasoning_effort},
                 instructions=(
-                    "You resolve book nominations for a Discord book club. "
+                    "You resolve book nominations for a rationalist reading group. "
+                    "The group reads exclusively nonfiction, and the members are "
+                    "largely interested in current events, economics, education, "
+                    "history, law, philosophy and the like. "
                     "Use web search to identify the best matching real book for "
-                    "the user's query, which may be an ISBN, title, or title and "
-                    "author. For ambiguous title-only queries, pick the most "
-                    "canonical or well-known match. Prefer publisher, library, "
-                    "or bookseller metadata. Return concise, spoiler-free plain "
-                    "metadata only."
+                    "the user's query, which may be an ISBN, title (with or "
+                    "without author), or other identifying query. For ambiguous "
+                    "queries, pick the most canonical or well-known match. Prefer "
+                    "metadata which comes directly from a publisher, library or "
+                    "bookseller such as Amazon or Goodreads. Return concise plain "
+                    "metadata only according to the schema. The summary of the "
+                    "book should provide a compelling narrative for the book club "
+                    "to choose to read the book."
                 ),
                 input=(
                     "Find the best matching book for this nomination query and "
