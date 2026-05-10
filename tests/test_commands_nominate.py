@@ -2,11 +2,15 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import httpx
 import pytest
 
 from bot.config import get_settings
-from bot.commands.nominate import Nominate
+from bot.commands.nominate import (
+    LOOKUP_ERROR_MESSAGE,
+    BookLookupError,
+    BookLookupResult,
+    Nominate,
+)
 from bot.db import Book, Nomination
 from bot.utils import NOMINATION_CANCEL_EMOJI, utcnow
 from tests.utils import (
@@ -46,6 +50,21 @@ class DummyReaction:
         return DummyUsers(self._ids)
 
 
+def lookup_result(**overrides):
+    data = {
+        "title": "The Title",
+        "subtitle": "An Adventure",
+        "authors": ["The Author"],
+        "isbn_10": "0395193958",
+        "isbn_13": "9780395193952",
+        "description": "Fun book",
+        "summary": "Great book",
+        "page_count": 321,
+    }
+    data.update(overrides)
+    return BookLookupResult(**data)
+
+
 @pytest.mark.asyncio
 async def test_nominate_existing_book(monkeypatch):
     existing_book = SimpleNamespace(title="Existing", id=1)
@@ -55,17 +74,17 @@ async def test_nominate_existing_book(monkeypatch):
     )
     interaction = DummyInteraction()
     cog = Nominate(bot=SimpleNamespace())
+    monkeypatch.setattr(cog, "lookup_book", AsyncMock(return_value=lookup_result()))
 
-    await cog.nominate(interaction, "978-1-234567-89-7")
+    await cog.nominate(interaction, "978-0-395-19395-2")
 
     assert interaction.response.deferred is True
-    assert interaction.followup.messages[0]["content"].startswith("Book with ISBN")
+    assert interaction.followup.messages[0]["content"].startswith("*Existing*")
     assert session.commit_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_nominate_creates_book_and_posts_embed(monkeypatch):
-    summary_text = "Great book"
     fixed_now = utcnow()
 
     async def commit_hook(session):
@@ -74,7 +93,8 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
                 obj.id = 42
 
     session = DummySession(
-        execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook
+        execute_results=[DummyResult(scalar=None), DummyResult(scalars=[])],
+        commit_hook=commit_hook,
     )
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
@@ -82,20 +102,7 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
 
     cog = Nominate(bot=SimpleNamespace())
-
-    async def fake_search(_isbn):
-        return {
-            "title": "The Title",
-            "subtitle": "An Adventure",
-            "description": "Fun book",
-            "number_of_pages": 321,
-        }
-
-    async def fake_summary(_isbn, _desc):
-        return summary_text
-
-    monkeypatch.setattr(cog, "open_library_search", fake_search)
-    monkeypatch.setattr(cog, "fetch_summary", fake_summary)
+    monkeypatch.setattr(cog, "lookup_book", AsyncMock(return_value=lookup_result()))
 
     nom_channel = DummyChannel(2)
     interaction_channel = DummyChannel(5)
@@ -106,7 +113,7 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     )
     interaction.channel = interaction_channel
 
-    await cog.nominate(interaction, "0-395-19395-8")
+    await cog.nominate(interaction, "The Title by The Author")
 
     assert interaction.followup.messages[-1]["content"].startswith("Nominated")
     assert session.commit_calls == 1
@@ -117,6 +124,13 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     assert "Note: AI generated" not in embed_entry["embed"].description
     assert NOMINATION_CANCEL_EMOJI in embed_entry["reactions"]
     assert interaction.channel.messages[0]["content"].startswith("<@99> nominated")
+    book = next(obj for obj in session.added if isinstance(obj, Book))
+    assert book.isbn == "9780395193952"
+    assert book.isbn_10 == "0395193958"
+    assert book.isbn_13 == "9780395193952"
+    assert book.authors == ["The Author"]
+    assert book.primary_author == "The Author"
+    assert book.length == 321
     nomination = next(obj for obj in session.added if isinstance(obj, Nomination))
     assert nomination.message_id == 1
 
@@ -376,7 +390,6 @@ async def test_reaction_refresh_is_debounced(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_nominate_handles_missing_channel(monkeypatch):
-    summary_text = "Summary"
     fixed_now = utcnow()
 
     async def commit_hook(session):
@@ -385,7 +398,8 @@ async def test_nominate_handles_missing_channel(monkeypatch):
                 obj.id = 55
 
     session = DummySession(
-        execute_results=[DummyResult(scalar=None)], commit_hook=commit_hook
+        execute_results=[DummyResult(scalar=None), DummyResult(scalars=[])],
+        commit_hook=commit_hook,
     )
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
@@ -393,18 +407,17 @@ async def test_nominate_handles_missing_channel(monkeypatch):
     monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
 
     cog = Nominate(bot=SimpleNamespace())
-
-    async def fake_search(_isbn):
-        return {
-            "title": "Missing Channel Book",
-            "description": "Fun",
-        }
-
-    async def fake_summary(_isbn, _desc):
-        return summary_text
-
-    monkeypatch.setattr(cog, "open_library_search", fake_search)
-    monkeypatch.setattr(cog, "fetch_summary", fake_summary)
+    monkeypatch.setattr(
+        cog,
+        "lookup_book",
+        AsyncMock(
+            return_value=lookup_result(
+                title="Missing Channel Book",
+                subtitle=None,
+                summary="Summary",
+            )
+        ),
+    )
 
     interaction = DummyInteraction(
         client=SimpleNamespace(get_channel=lambda _cid: None)
@@ -422,147 +435,169 @@ async def test_nominate_handles_missing_channel(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_nominate_handles_open_library_error(monkeypatch):
-    request = httpx.Request("GET", "https://example.com")
-    response = httpx.Response(500, request=request)
-    error = httpx.HTTPStatusError("boom", request=request, response=response)
-    session = DummySession(execute_results=[DummyResult(scalar=None)])
+async def test_nominate_handles_openai_lookup_error(monkeypatch):
+    session = DummySession()
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
     )
     cog = Nominate(bot=SimpleNamespace())
-
-    async def failing(_isbn):
-        raise error
-
-    monkeypatch.setattr(cog, "open_library_search", failing)
+    monkeypatch.setattr(cog, "lookup_book", AsyncMock(side_effect=BookLookupError()))
     interaction = DummyInteraction()
 
-    await cog.nominate(interaction, "1234567890")
+    await cog.nominate(interaction, "Common Sense")
 
-    assert (
-        interaction.followup.messages[0]["content"]
-        == "Failed to fetch book metadata from OpenLibrary.org."
-    )
+    assert interaction.followup.messages[0]["content"] == LOOKUP_ERROR_MESSAGE
     assert session.commit_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_nominate_handles_missing_metadata(monkeypatch):
-    session = DummySession(execute_results=[DummyResult(scalar=None)])
+async def test_nominate_title_only_without_isbn_dedupes_by_title_and_author(
+    monkeypatch,
+):
+    existing_book = SimpleNamespace(
+        title="Common Sense",
+        primary_author="Thomas Paine",
+        id=9,
+    )
+    session = DummySession(execute_results=[DummyResult(scalars=[existing_book])])
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
     )
     cog = Nominate(bot=SimpleNamespace())
-
-    async def missing(_isbn):
-        return {}
-
-    monkeypatch.setattr(cog, "open_library_search", missing)
+    monkeypatch.setattr(
+        cog,
+        "lookup_book",
+        AsyncMock(
+            return_value=lookup_result(
+                title=" Common   Sense ",
+                subtitle=None,
+                authors=["thomas paine"],
+                isbn_10=None,
+                isbn_13=None,
+            )
+        ),
+    )
     interaction = DummyInteraction()
 
-    await cog.nominate(interaction, "1234567890")
+    await cog.nominate(interaction, "Common Sense")
 
-    assert (
-        interaction.followup.messages[0]["content"]
-        == "Failed to find book in OpenLibrary.org."
-    )
+    assert interaction.followup.messages[0]["content"].startswith("*Common Sense*")
     assert session.commit_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_open_library_search_returns_json(monkeypatch):
-    class DummyResponse:
-        def __init__(self):
-            self._data = {"title": "Example"}
+async def test_nominate_title_only_without_isbn_creates_book(monkeypatch):
+    fixed_now = utcnow()
 
-        def json(self):
-            return self._data
+    async def commit_hook(session):
+        for obj in session.added:
+            if isinstance(obj, Book) and getattr(obj, "id", None) is None:
+                obj.id = 84
 
-        def raise_for_status(self):
-            return None
-
-    class DummyClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return False
-
-        async def get(self, *_args, **_kwargs):
-            return DummyResponse()
-
-    monkeypatch.setattr("bot.commands.nominate.httpx.AsyncClient", DummyClient)
+    session = DummySession(
+        execute_results=[DummyResult(scalars=[])],
+        commit_hook=commit_hook,
+    )
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
     cog = Nominate(bot=SimpleNamespace())
+    monkeypatch.setattr(
+        cog,
+        "lookup_book",
+        AsyncMock(
+            return_value=lookup_result(
+                title="Common Sense",
+                subtitle=None,
+                authors=["Thomas Paine"],
+                isbn_10=None,
+                isbn_13=None,
+                page_count=None,
+            )
+        ),
+    )
 
-    data = await cog.open_library_search("123")
+    nom_channel = DummyChannel(2)
+    interaction = DummyInteraction(
+        client=SimpleNamespace(get_channel=lambda _cid: nom_channel)
+    )
 
-    assert data["title"] == "Example"
+    await cog.nominate(interaction, "Common Sense")
+
+    book = next(obj for obj in session.added if isinstance(obj, Book))
+    assert book.title == "Common Sense"
+    assert book.isbn is None
+    assert book.isbn_10 is None
+    assert book.isbn_13 is None
+    assert book.primary_author == "Thomas Paine"
+    assert book.length is None
+    assert session.commit_calls == 1
 
 
 @pytest.mark.asyncio
-async def test_google_books_summary_returns_normalized_description(monkeypatch):
-    class DummyResponse:
-        def json(self):
-            return {
-                "items": [
-                    {
-                        "volumeInfo": {
-                            "industryIdentifiers": [
-                                {"type": "ISBN_13", "identifier": "9781234567897"}
-                            ],
-                            "description": "<p>One <b>great</b> book.</p>",
-                        }
-                    }
-                ]
-            }
-
-        def raise_for_status(self):
-            return None
-
-    class DummyClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return False
-
-        async def get(self, *_args, **_kwargs):
-            return DummyResponse()
-
+async def test_find_duplicate_checks_title_author_after_empty_isbn_match():
     cog = Nominate(bot=SimpleNamespace())
-    monkeypatch.setattr("bot.commands.nominate.httpx.AsyncClient", DummyClient)
+    existing_book = SimpleNamespace(
+        title="The Title: An Adventure",
+        primary_author="The Author",
+        id=10,
+    )
+    session = DummySession(
+        execute_results=[
+            DummyResult(scalar=None),
+            DummyResult(scalars=[existing_book]),
+        ]
+    )
 
-    result = await cog.google_books_summary("9781234567897")
+    duplicate = await cog._find_duplicate_book(session, lookup_result())
 
-    assert result == "One great book."
+    assert duplicate is existing_book
 
 
 @pytest.mark.asyncio
-async def test_fetch_summary_falls_back_to_open_library_description(monkeypatch):
+async def test_lookup_book_uses_openai_structured_output(monkeypatch):
+    parsed = lookup_result(title="Common Sense", subtitle=None)
+    parse_mock = AsyncMock(return_value=SimpleNamespace(output_parsed=parsed))
+
+    class DummyOpenAI:
+        def __init__(self, *, api_key):
+            self.api_key = api_key
+            self.responses = SimpleNamespace(parse=parse_mock)
+
+    monkeypatch.setattr("bot.commands.nominate.AsyncOpenAI", DummyOpenAI)
     cog = Nominate(bot=SimpleNamespace())
 
-    async def failing(_isbn):
-        request = httpx.Request("GET", "https://example.com")
-        response = httpx.Response(500, request=request)
-        raise httpx.HTTPStatusError("boom", request=request, response=response)
+    result = await cog.lookup_book("Common Sense")
 
-    monkeypatch.setattr(cog, "google_books_summary", failing)
-
-    result = await cog.fetch_summary("9781234567897", "Open Library summary")
-
-    assert result == "Open Library summary"
+    assert result is parsed
+    parse_mock.assert_awaited_once()
+    kwargs = parse_mock.await_args.kwargs
+    assert kwargs["model"] == settings.openai_book_lookup_model
+    assert kwargs["text_format"] is BookLookupResult
+    assert kwargs["tools"] == [{"type": "web_search", "search_context_size": "medium"}]
 
 
 @pytest.mark.asyncio
-async def test_fetch_summary_returns_default_when_all_sources_empty(monkeypatch):
+async def test_lookup_book_rejects_invalid_structured_output(monkeypatch):
+    parse_mock = AsyncMock(return_value=SimpleNamespace(output_parsed=None))
+
+    class DummyOpenAI:
+        def __init__(self, *, api_key):
+            self.responses = SimpleNamespace(parse=parse_mock)
+
+    monkeypatch.setattr("bot.commands.nominate.AsyncOpenAI", DummyOpenAI)
     cog = Nominate(bot=SimpleNamespace())
 
-    async def empty_summary(_isbn):
-        return ""
+    with pytest.raises(BookLookupError):
+        await cog.lookup_book("Common Sense")
 
-    monkeypatch.setattr(cog, "google_books_summary", empty_summary)
 
-    result = await cog.fetch_summary("9781234567897", "")
+def test_lookup_result_rejects_malformed_isbn():
+    with pytest.raises(ValueError):
+        lookup_result(isbn_13="123")
 
-    assert result == "No summary available."
+
+def test_lookup_result_requires_author():
+    with pytest.raises(ValueError):
+        lookup_result(authors=[])
