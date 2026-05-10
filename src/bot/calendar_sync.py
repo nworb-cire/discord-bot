@@ -44,17 +44,21 @@ class DiscordGoogleCalendarSync:
         self.safety_cutoff = DEFAULT_SAFETY_CUTOFF
         self._resolved_discord_guild_id: int | None = settings.discord_guild_id
 
-        if not (
-            settings.google_service_account_email
-            and settings.google_service_account_private_key
-            and settings.google_calendar_id
-        ):
+        if not self.is_configured(settings):
             raise SyncError("Google Calendar sync is missing required configuration.")
 
         private_key = settings.google_service_account_private_key.replace("\\n", "\n")
         self.google_service_account_private_key = private_key
         self._cached_access_token: str | None = None
         self._access_token_expires_at: int = 0
+
+    @staticmethod
+    def is_configured(settings: Settings) -> bool:
+        return bool(
+            settings.google_service_account_email
+            and settings.google_service_account_private_key
+            and settings.google_calendar_id
+        )
 
     def run(self) -> dict[str, int | str]:
         discord_events = self._load_discord_events()

@@ -62,6 +62,9 @@ async def send_prediction_reminders(bot: discord.Client):
 
 
 async def run_calendar_sync():
+    if not DiscordGoogleCalendarSync.is_configured(settings):
+        return
+
     try:
         await asyncio.to_thread(DiscordGoogleCalendarSync(settings).run)
     except SyncError:

@@ -169,6 +169,10 @@ def test_run_calendar_sync_invokes_sync_runner(monkeypatch):
         calls = []
 
         class _Runner:
+            @staticmethod
+            def is_configured(settings):
+                return True
+
             def __init__(self, settings):
                 self.settings = settings
 
@@ -188,9 +192,39 @@ def test_run_calendar_sync_invokes_sync_runner(monkeypatch):
     asyncio.run(_run())
 
 
+def test_run_calendar_sync_skips_when_calendar_is_not_configured(monkeypatch):
+    async def _run():
+        calls = []
+
+        class _Runner:
+            @staticmethod
+            def is_configured(settings):
+                return False
+
+            def __init__(self, settings):
+                calls.append("__init__")
+
+        async def _to_thread(func):
+            calls.append("to_thread")
+            func()
+
+        monkeypatch.setattr(background_mod, "DiscordGoogleCalendarSync", _Runner)
+        monkeypatch.setattr(background_mod.asyncio, "to_thread", _to_thread)
+
+        await background_mod.run_calendar_sync()
+
+        assert calls == []
+
+    asyncio.run(_run())
+
+
 def test_run_calendar_sync_logs_sync_errors(monkeypatch):
     async def _run():
         class _Runner:
+            @staticmethod
+            def is_configured(settings):
+                return True
+
             def __init__(self, settings):
                 self.settings = settings
 
