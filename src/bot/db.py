@@ -34,7 +34,6 @@ class Book(Base):
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     summary: Mapped[str] = mapped_column(Text, nullable=True)
-    isbn: Mapped[str] = mapped_column(String(13), unique=True, nullable=True)
     isbn_10: Mapped[str | None] = mapped_column(String(10), nullable=True)
     isbn_13: Mapped[str | None] = mapped_column(String(13), nullable=True)
     authors: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

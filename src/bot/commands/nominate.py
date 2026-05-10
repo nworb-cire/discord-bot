@@ -246,7 +246,6 @@ class Nominate(commands.Cog):
             title=lookup.full_title,
             description=lookup.description or "",
             summary=lookup.summary,
-            isbn=lookup.preferred_isbn,
             isbn_10=lookup.isbn_10,
             isbn_13=lookup.isbn_13,
             authors=lookup.authors,
@@ -347,7 +346,6 @@ class Nominate(commands.Cog):
         if isbns:
             stmt = select(Book).where(
                 or_(
-                    Book.isbn.in_(isbns),
                     Book.isbn_10.in_(isbns),
                     Book.isbn_13.in_(isbns),
                 )

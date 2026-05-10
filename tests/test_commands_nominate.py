@@ -173,7 +173,7 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     assert NOMINATION_CANCEL_EMOJI in embed_entry["reactions"]
     assert interaction.channel.messages[0]["content"].startswith("<@99> nominated")
     book = next(obj for obj in session.added if isinstance(obj, Book))
-    assert book.isbn == "9780395193952"
+    assert not hasattr(book, "isbn")
     assert book.isbn_10 == "0395193958"
     assert book.isbn_13 == "9780395193952"
     assert book.authors == ["The Author"]
@@ -580,7 +580,7 @@ async def test_nominate_title_only_without_isbn_creates_book(monkeypatch):
 
     book = next(obj for obj in session.added if isinstance(obj, Book))
     assert book.title == "Common Sense"
-    assert book.isbn is None
+    assert not hasattr(book, "isbn")
     assert book.isbn_10 is None
     assert book.isbn_13 is None
     assert book.primary_author == "Thomas Paine"
@@ -606,6 +606,31 @@ async def test_find_duplicate_checks_title_author_after_empty_isbn_match():
     duplicate = await cog._find_duplicate_book(session, lookup_result())
 
     assert duplicate is existing_book
+
+
+@pytest.mark.asyncio
+async def test_find_duplicate_checks_structured_isbn_fields_only():
+    cog = Nominate(bot=SimpleNamespace())
+    isbn_match = SimpleNamespace(
+        title="Different Title",
+        primary_author="Different Author",
+        id=10,
+        isbn_10="0395193958",
+        isbn_13=None,
+    )
+    session = DummySession(execute_results=[DummyResult(scalar=isbn_match)])
+
+    duplicate = await cog._find_duplicate_book(session, lookup_result())
+
+    assert duplicate is isbn_match
+    statement = str(session.executed[0])
+    assert "books.isbn_10" in statement
+    assert "books.isbn_13" in statement
+    assert "books.isbn IN" not in statement
+
+
+def test_book_model_has_no_legacy_isbn_column():
+    assert "isbn" not in Book.__table__.columns
 
 
 @pytest.mark.asyncio
