@@ -18,11 +18,20 @@ def test_openai_book_lookup_settings(monkeypatch):
     assert s.openai_book_lookup_model == "gpt-5-mini"
     assert s.openai_book_lookup_reasoning_effort == "low"
     assert s.openai_book_lookup_max_output_tokens == 4000
+    assert s.openai_prediction_evidence_model == "gpt-5-mini"
+    assert s.openai_prediction_evidence_reasoning_effort == "low"
+    assert s.openai_prediction_evidence_max_output_tokens == 2000
 
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_MODEL", "custom-model")
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_REASONING_EFFORT", "medium")
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_MAX_OUTPUT_TOKENS", "6000")
+    monkeypatch.setenv("OPENAI_PREDICTION_EVIDENCE_MODEL", "evidence-model")
+    monkeypatch.setenv("OPENAI_PREDICTION_EVIDENCE_REASONING_EFFORT", "medium")
+    monkeypatch.setenv("OPENAI_PREDICTION_EVIDENCE_MAX_OUTPUT_TOKENS", "1000")
     s = Settings()
     assert s.openai_book_lookup_model == "custom-model"
     assert s.openai_book_lookup_reasoning_effort == "medium"
     assert s.openai_book_lookup_max_output_tokens == 6000
+    assert s.openai_prediction_evidence_model == "evidence-model"
+    assert s.openai_prediction_evidence_reasoning_effort == "medium"
+    assert s.openai_prediction_evidence_max_output_tokens == 1000

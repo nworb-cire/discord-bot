@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     openai_book_lookup_max_output_tokens: int = Field(
         default=4000, alias="OPENAI_BOOK_LOOKUP_MAX_OUTPUT_TOKENS"
     )
+    openai_prediction_evidence_model: str = Field(
+        default="gpt-5-mini", alias="OPENAI_PREDICTION_EVIDENCE_MODEL"
+    )
+    openai_prediction_evidence_reasoning_effort: str = Field(
+        default="low", alias="OPENAI_PREDICTION_EVIDENCE_REASONING_EFFORT"
+    )
+    openai_prediction_evidence_max_output_tokens: int = Field(
+        default=2000, alias="OPENAI_PREDICTION_EVIDENCE_MAX_OUTPUT_TOKENS"
+    )
     google_service_account_email: str | None = Field(
         default=None, alias="GOOGLE_SERVICE_ACCOUNT_EMAIL"
     )
