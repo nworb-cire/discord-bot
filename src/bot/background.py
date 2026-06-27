@@ -12,6 +12,11 @@ from bot.recurring_discord_events import (
 from bot.config import get_settings
 from bot.db import async_session, Prediction
 from bot.election import close_and_tally
+from bot.prediction_evidence import (
+    PredictionEvidence,
+    PredictionEvidenceLookupError,
+    find_prediction_evidence,
+)
 from bot.utils import MOUNTAIN, get_open_election, utcnow
 
 settings = get_settings()
@@ -45,6 +50,15 @@ async def send_prediction_reminders(bot: discord.Client):
         guild_id = getattr(channel, "guild", None)
         guild_id = getattr(guild_id, "id", None)
         for p in preds:
+            try:
+                evidence = await find_prediction_evidence(p)
+            except PredictionEvidenceLookupError:
+                logger.exception(
+                    "Prediction evidence lookup failed prediction_id={}",
+                    getattr(p, "id", None),
+                )
+                evidence = []
+
             link = (
                 f"https://discord.com/channels/{guild_id}/{channel.id}/{p.message_id}"
                 if guild_id is not None and p.message_id is not None
@@ -56,9 +70,24 @@ async def send_prediction_reminders(bot: discord.Client):
             ]
             if link:
                 lines.append(link)
+            lines.extend(_format_prediction_evidence(evidence))
             await channel.send("\n".join(lines))
             p.reminded = True
         await session.commit()
+
+
+def _format_prediction_evidence(evidence: list[PredictionEvidence]) -> list[str]:
+    if not evidence:
+        return ["", "No conclusive evidence found by quick search."]
+
+    lines = ["", "Conclusive evidence found:"]
+    for item in evidence:
+        direction = (
+            "Supporting" if item.direction == "supporting" else "Contradictory"
+        )
+        lines.append(f"- **{direction}:** {item.summary}")
+        lines.append(f"  {item.url}")
+    return lines
 
 
 async def run_calendar_sync():

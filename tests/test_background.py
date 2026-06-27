@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from bot import background as background_mod
+from bot.prediction_evidence import PredictionEvidence, PredictionEvidenceLookupError
 
 
 def _session_cm(session):
@@ -85,6 +86,7 @@ def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
         session = SimpleNamespace()
         session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))
         session.commit = AsyncMock()
+        evidence_lookup = AsyncMock(return_value=[])
         channel = SimpleNamespace(
             send=AsyncMock(),
             id=5,
@@ -99,14 +101,118 @@ def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
         monkeypatch.setattr(
             background_mod, "async_session", lambda: _session_cm(session)
         )
+        monkeypatch.setattr(
+            background_mod, "find_prediction_evidence", evidence_lookup
+        )
 
         await background_mod.send_prediction_reminders(client)
 
+        evidence_lookup.assert_awaited_once_with(prediction)
         assert prediction.reminded is True
         message = channel.send.await_args.args[0]
         assert "Reminder to adjudicate prediction" in message
         assert "> Read more sci-fi" in message
         assert "https://discord.com/channels/9/5/17" in message
+        assert "No conclusive evidence found by quick search." in message
+        session.commit.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_send_prediction_reminders_includes_prediction_evidence(monkeypatch):
+    async def _run():
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        prediction = SimpleNamespace(
+            id=3,
+            text="Prediction with evidence",
+            reminded=False,
+            message_id=None,
+            due_at=now,
+        )
+        session = SimpleNamespace()
+        session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))
+        session.commit = AsyncMock()
+        evidence_lookup = AsyncMock(
+            return_value=[
+                PredictionEvidence(
+                    url="https://example.com/final-result",
+                    summary="An official result conclusively settled the claim.",
+                    direction="contradictory",
+                )
+            ]
+        )
+        channel = SimpleNamespace(
+            send=AsyncMock(),
+            id=5,
+            guild=SimpleNamespace(id=9),
+        )
+        client = SimpleNamespace(get_channel=lambda _: channel)
+
+        monkeypatch.setattr(background_mod, "utcnow", lambda: now)
+        monkeypatch.setattr(
+            background_mod, "settings", SimpleNamespace(predictions_channel_id=4)
+        )
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
+        monkeypatch.setattr(
+            background_mod, "find_prediction_evidence", evidence_lookup
+        )
+
+        await background_mod.send_prediction_reminders(client)
+
+        message = channel.send.await_args.args[0]
+        assert "Conclusive evidence found:" in message
+        assert "**Contradictory:**" in message
+        assert "An official result conclusively settled the claim." in message
+        assert "https://example.com/final-result" in message
+        assert prediction.reminded is True
+        session.commit.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_send_prediction_reminders_marks_prediction_when_evidence_lookup_fails(
+    monkeypatch,
+):
+    async def _run():
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        prediction = SimpleNamespace(
+            id=3,
+            text="Prediction with lookup failure",
+            reminded=False,
+            message_id=None,
+            due_at=now,
+        )
+        session = SimpleNamespace()
+        session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))
+        session.commit = AsyncMock()
+        evidence_lookup = AsyncMock(side_effect=PredictionEvidenceLookupError)
+        channel = SimpleNamespace(
+            send=AsyncMock(),
+            id=5,
+            guild=SimpleNamespace(id=9),
+        )
+        client = SimpleNamespace(get_channel=lambda _: channel)
+
+        monkeypatch.setattr(background_mod, "utcnow", lambda: now)
+        monkeypatch.setattr(
+            background_mod, "settings", SimpleNamespace(predictions_channel_id=4)
+        )
+        monkeypatch.setattr(
+            background_mod, "async_session", lambda: _session_cm(session)
+        )
+        monkeypatch.setattr(
+            background_mod, "find_prediction_evidence", evidence_lookup
+        )
+
+        await background_mod.send_prediction_reminders(client)
+
+        evidence_lookup.assert_awaited_once_with(prediction)
+        assert prediction.reminded is True
+        assert "No conclusive evidence found by quick search." in (
+            channel.send.await_args.args[0]
+        )
         session.commit.assert_awaited_once()
 
     asyncio.run(_run())
@@ -140,6 +246,7 @@ def test_send_prediction_reminders_fetches_channel_when_missing(monkeypatch):
         session = SimpleNamespace()
         session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))
         session.commit = AsyncMock()
+        evidence_lookup = AsyncMock(return_value=[])
         channel = SimpleNamespace(
             send=AsyncMock(),
             id=1,
@@ -155,6 +262,9 @@ def test_send_prediction_reminders_fetches_channel_when_missing(monkeypatch):
         )
         monkeypatch.setattr(
             background_mod, "async_session", lambda: _session_cm(session)
+        )
+        monkeypatch.setattr(
+            background_mod, "find_prediction_evidence", evidence_lookup
         )
 
         await background_mod.send_prediction_reminders(client)
