@@ -70,10 +70,10 @@ def _openai_response_details(response: Any) -> dict[str, Any]:
     }
 
 
-def _prediction_due_text(due_at: datetime | None) -> str:
-    if due_at is None:
+def _prediction_datetime_text(value: datetime | None) -> str:
+    if value is None:
         return "unknown"
-    return due_at.isoformat(sep=" ")
+    return value.isoformat(sep=" ")
 
 
 async def find_prediction_evidence(
@@ -110,7 +110,11 @@ async def find_prediction_evidence(
                 "Find conclusive evidence for this prediction.\n"
                 f"Prediction ID: {getattr(prediction, 'id', None)}\n"
                 f"Prediction: {prediction.text}\n"
-                f"Due at: {_prediction_due_text(getattr(prediction, 'due_at', None))}"
+                "Limit the scope of the search to events occurring between "
+                f"{_prediction_datetime_text(getattr(prediction, 'created_at', None))} "
+                "and "
+                f"{_prediction_datetime_text(getattr(prediction, 'due_at', None))}, "
+                "inclusive."
             ),
             text_format=PredictionEvidenceResult,
             tools=[{"type": "web_search", "search_context_size": "low"}],

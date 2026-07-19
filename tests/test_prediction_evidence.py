@@ -38,6 +38,7 @@ async def test_find_prediction_evidence_uses_openai_structured_output(monkeypatc
         predictor_discord_id=42,
         text="A specific thing happens",
         odds=65,
+        created_at=datetime(2024, 1, 1, 9, 30),
         due_at=datetime(2024, 1, 10, 12, 0),
         message_id=99,
     )
@@ -58,6 +59,11 @@ async def test_find_prediction_evidence_uses_openai_structured_output(monkeypatc
         == settings.openai_prediction_evidence_max_output_tokens
     )
     assert "A specific thing happens" in kwargs["input"]
+    assert (
+        "Limit the scope of the search to events occurring between "
+        "2024-01-01 09:30:00 and 2024-01-10 12:00:00, inclusive."
+        in kwargs["input"]
+    )
     assert "conclusive" in kwargs["instructions"]
 
 
