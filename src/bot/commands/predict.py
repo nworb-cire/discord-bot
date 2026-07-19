@@ -44,6 +44,7 @@ class Predict(commands.Cog):
         text: str,
         probability: float,
     ) -> None:
+        await interaction.response.defer(ephemeral=True)
         try:
             due_at_local = parse_due_datetime(due)
         except ValueError as exc:
@@ -101,6 +102,4 @@ class Predict(commands.Cog):
         response_lines = [f"Prediction scheduled for <t:{due_timestamp}:D>."]
         if link:
             response_lines.append(f"View it [here]({link}).")
-        await interaction.response.send_message(
-            " ".join(response_lines), ephemeral=True
-        )
+        await interaction.followup.send(" ".join(response_lines), ephemeral=True)

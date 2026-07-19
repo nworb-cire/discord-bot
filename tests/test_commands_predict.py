@@ -37,7 +37,8 @@ async def test_predict_records_prediction(monkeypatch):
     assert float(record.odds) == pytest.approx(60.0)
     assert record.due_at == datetime(2024, 1, 10, 0, 0)
     assert session.commit_calls == 1
-    response = interaction.response.messages[0]
+    assert interaction.response.deferred is True
+    response = interaction.followup.messages[0]
     assert response["ephemeral"] is True
 
 
@@ -132,7 +133,8 @@ async def test_predict_handles_invalid_date(monkeypatch):
 
     await cog.predict(interaction, due="not-a-date", text="Test", probability=50)
 
-    error_message = interaction.response.messages[0]["content"]
+    assert interaction.response.deferred is True
+    error_message = interaction.followup.messages[0]["content"]
     assert "Could not parse due date" in error_message
 
 
@@ -181,7 +183,8 @@ async def test_predict_rejects_probability_bounds(monkeypatch):
 
     await cog.predict(interaction, due="2024-01-10", text="Test", probability=0)
 
-    error_message = interaction.response.messages[0]["content"]
+    assert interaction.response.deferred is True
+    error_message = interaction.followup.messages[0]["content"]
     assert "between 0 and 100" in error_message
 
 
@@ -208,5 +211,6 @@ async def test_predict_rejects_past_due(monkeypatch):
         probability=50,
     )
 
-    error_message = interaction.response.messages[0]["content"]
+    assert interaction.response.deferred is True
+    error_message = interaction.followup.messages[0]["content"]
     assert "future" in error_message
