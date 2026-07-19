@@ -25,10 +25,10 @@ class Settings(BaseSettings):
         default=4000, alias="OPENAI_BOOK_LOOKUP_MAX_OUTPUT_TOKENS"
     )
     openai_prediction_evidence_model: str = Field(
-        default="gpt-5-mini", alias="OPENAI_PREDICTION_EVIDENCE_MODEL"
+        default="gpt-5.6-luna", alias="OPENAI_PREDICTION_EVIDENCE_MODEL"
     )
     openai_prediction_evidence_reasoning_effort: str = Field(
-        default="low", alias="OPENAI_PREDICTION_EVIDENCE_REASONING_EFFORT"
+        default="high", alias="OPENAI_PREDICTION_EVIDENCE_REASONING_EFFORT"
     )
     openai_prediction_evidence_max_output_tokens: int = Field(
         default=2000, alias="OPENAI_PREDICTION_EVIDENCE_MAX_OUTPUT_TOKENS"

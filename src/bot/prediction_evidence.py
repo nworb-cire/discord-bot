@@ -92,29 +92,20 @@ async def find_prediction_evidence(
     try:
         response = await client.responses.parse(
             model=settings.openai_prediction_evidence_model,
-            reasoning={
-                "effort": settings.openai_prediction_evidence_reasoning_effort
-            },
+            reasoning={"effort": settings.openai_prediction_evidence_reasoning_effort},
             instructions=(
-                "You evaluate whether real-world evidence conclusively supports "
-                "or contradicts a registered prediction. Use web search to find "
-                "relevant sources. Return only evidence that is conclusive one "
-                "way or the other. Do not include speculation, weak indicators, "
-                "unresolved forecasts, opinion pieces, or sources that merely "
-                "repeat the prediction. If no conclusive evidence is found, "
-                "return an empty evidence list. Each summary must briefly state "
-                "the concrete fact from the source and why it supports or "
-                "contradicts the prediction."
+                "Use web search to find conclusive evidence for or against the "
+                "prediction. Include a source URL and a brief explanation for each "
+                "result. Return no evidence when the available sources are "
+                "inconclusive."
             ),
             input=(
-                "Find conclusive evidence for this prediction.\n"
-                f"Prediction ID: {getattr(prediction, 'id', None)}\n"
+                "Find conclusive evidence for or against this prediction.\n"
                 f"Prediction: {prediction.text}\n"
-                "Limit the scope of the search to events occurring between "
-                f"{_prediction_datetime_text(getattr(prediction, 'created_at', None))} "
-                "and "
-                f"{_prediction_datetime_text(getattr(prediction, 'due_at', None))}, "
-                "inclusive."
+                "Prediction made at: "
+                f"{_prediction_datetime_text(getattr(prediction, 'created_at', None))}\n"
+                "When applicable, consider only events or changes occurring after "
+                "the prediction was made."
             ),
             text_format=PredictionEvidenceResult,
             tools=[{"type": "web_search", "search_context_size": "low"}],
@@ -165,9 +156,7 @@ async def find_prediction_evidence(
             type(result).__name__,
             _openai_response_details(response),
         )
-        raise PredictionEvidenceLookupError(
-            "OpenAI did not return prediction evidence"
-        )
+        raise PredictionEvidenceLookupError("OpenAI did not return prediction evidence")
 
     logger.info(
         "OpenAI prediction evidence returned prediction_id={} evidence_count={} "

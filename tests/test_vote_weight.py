@@ -18,8 +18,8 @@ def test_openai_book_lookup_settings(monkeypatch):
     assert s.openai_book_lookup_model == "gpt-5-mini"
     assert s.openai_book_lookup_reasoning_effort == "low"
     assert s.openai_book_lookup_max_output_tokens == 4000
-    assert s.openai_prediction_evidence_model == "gpt-5-mini"
-    assert s.openai_prediction_evidence_reasoning_effort == "low"
+    assert s.openai_prediction_evidence_model == "gpt-5.6-luna"
+    assert s.openai_prediction_evidence_reasoning_effort == "high"
     assert s.openai_prediction_evidence_max_output_tokens == 2000
 
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_MODEL", "custom-model")

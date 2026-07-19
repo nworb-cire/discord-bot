@@ -59,11 +59,10 @@ async def test_find_prediction_evidence_uses_openai_structured_output(monkeypatc
         == settings.openai_prediction_evidence_max_output_tokens
     )
     assert "A specific thing happens" in kwargs["input"]
-    assert (
-        "Limit the scope of the search to events occurring between "
-        "2024-01-01 09:30:00 and 2024-01-10 12:00:00, inclusive."
-        in kwargs["input"]
-    )
+    assert "Find conclusive evidence for or against" in kwargs["input"]
+    assert "Prediction made at: 2024-01-01 09:30:00" in kwargs["input"]
+    assert "2024-01-10" not in kwargs["input"]
+    assert "source URL" in kwargs["instructions"]
     assert "conclusive" in kwargs["instructions"]
 
 
