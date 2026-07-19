@@ -67,26 +67,94 @@ def lookup_result(**overrides):
 
 @pytest.mark.asyncio
 async def test_nominate_existing_book(monkeypatch):
+    fixed_now = utcnow()
     existing_book = SimpleNamespace(title="Existing", id=1)
     existing_nomination = SimpleNamespace(book_id=1)
+
+    async def commit_hook(session):
+        for obj in session.added:
+            if isinstance(obj, Book) and getattr(obj, "id", None) is None:
+                obj.id = 42
+
     session = DummySession(
         execute_results=[
             DummyResult(scalar=existing_book),
             DummyResult(scalar=existing_nomination),
-        ]
+        ],
+        commit_hook=commit_hook,
     )
     monkeypatch.setattr(
         "bot.commands.nominate.async_session", lambda: session_cm(session)
     )
-    interaction = DummyInteraction()
+    monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
+    nom_channel = DummyChannel(2)
+    interaction = DummyInteraction(
+        user_id=99,
+        client=SimpleNamespace(get_channel=lambda _cid: nom_channel),
+    )
     cog = Nominate(bot=SimpleNamespace())
     monkeypatch.setattr(cog, "lookup_book", AsyncMock(return_value=lookup_result()))
 
     await cog.nominate(interaction, "978-0-395-19395-2")
 
     assert interaction.response.deferred is True
-    assert interaction.followup.messages[0]["content"].startswith("*Existing*")
-    assert session.commit_calls == 0
+    fresh_book = next(obj for obj in session.added if isinstance(obj, Book))
+    fresh_nomination = next(obj for obj in session.added if isinstance(obj, Nomination))
+    assert fresh_book.id == 42
+    assert fresh_nomination.book_id == 42
+    assert interaction.followup.messages[-1]["content"] == (
+        "Nominated *The Title: An Adventure*"
+    )
+    assert session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_nominate_existing_book_can_be_repeated_without_ballot_history(
+    monkeypatch,
+):
+    fixed_now = utcnow()
+    existing_book = SimpleNamespace(title="Existing", id=1)
+    existing_nomination = SimpleNamespace(book_id=1)
+
+    async def commit_hook(session):
+        for obj in session.added:
+            if isinstance(obj, Book) and getattr(obj, "id", None) is None:
+                obj.id = 42
+
+    session = DummySession(
+        execute_results=[
+            DummyResult(scalar=existing_book),
+            DummyResult(scalar=existing_nomination),
+        ],
+        commit_hook=commit_hook,
+    )
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr("bot.commands.nominate.utcnow", lambda: fixed_now)
+
+    cog = Nominate(bot=SimpleNamespace())
+    monkeypatch.setattr(cog, "lookup_book", AsyncMock(return_value=lookup_result()))
+    nom_channel = DummyChannel(2)
+    interaction = DummyInteraction(
+        user_id=99,
+        client=SimpleNamespace(get_channel=lambda _cid: nom_channel),
+    )
+
+    await cog.nominate(interaction, "978-0-395-19395-2")
+
+    fresh_book = next(obj for obj in session.added if isinstance(obj, Book))
+    fresh_nomination = next(obj for obj in session.added if isinstance(obj, Nomination))
+    assert fresh_book.id == 42
+    assert fresh_book.title == "The Title: An Adventure"
+    assert fresh_nomination.book_id == fresh_book.id
+    assert fresh_nomination.nominator_discord_id == 99
+    assert fresh_nomination.reactions == 0
+    assert fresh_nomination.created_at == fixed_now
+    assert interaction.followup.messages[-1]["content"] == (
+        "Nominated *The Title: An Adventure*"
+    )
+    assert session.commit_calls == 1
 
 
 @pytest.mark.asyncio
@@ -499,7 +567,7 @@ async def test_nominate_handles_openai_lookup_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_nominate_title_only_without_isbn_dedupes_by_title_and_author(
+async def test_nominate_title_only_without_isbn_can_be_repeated(
     monkeypatch,
 ):
     existing_book = SimpleNamespace(
@@ -511,6 +579,7 @@ async def test_nominate_title_only_without_isbn_dedupes_by_title_and_author(
         execute_results=[
             DummyResult(scalars=[existing_book]),
             DummyResult(scalar=SimpleNamespace(book_id=9)),
+            DummyResult(scalars=[]),
         ]
     )
     monkeypatch.setattr(
@@ -534,8 +603,9 @@ async def test_nominate_title_only_without_isbn_dedupes_by_title_and_author(
 
     await cog.nominate(interaction, "Common Sense")
 
-    assert interaction.followup.messages[0]["content"].startswith("*Common Sense*")
-    assert session.commit_calls == 0
+    assert interaction.followup.messages[-1]["content"] == "Nominated *Common Sense*"
+    assert any(isinstance(obj, Book) for obj in session.added)
+    assert session.commit_calls == 1
 
 
 @pytest.mark.asyncio

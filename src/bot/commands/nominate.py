@@ -247,14 +247,14 @@ class Nominate(commands.Cog):
                 return
 
             book = await self._find_duplicate_book(session, lookup)
-            if book:
+            if book is not None:
                 nomination = await self._find_nomination_for_book(session, book)
                 if nomination is not None:
-                    await interaction.followup.send(
-                        f"*{book.title}* has previously been nominated.",
-                        ephemeral=True,
+                    logger.info(
+                        "Creating a fresh book entry for repeat nomination of {}",
+                        book.title,
                     )
-                    return
+                    book = await self._create_book(session, lookup)
             else:
                 book = await self._create_book(session, lookup)
 
@@ -374,11 +374,15 @@ class Nominate(commands.Cog):
             if isbn
         ]
         if isbns:
-            stmt = select(Book).where(
-                or_(
-                    Book.isbn_10.in_(isbns),
-                    Book.isbn_13.in_(isbns),
+            stmt = (
+                select(Book)
+                .where(
+                    or_(
+                        Book.isbn_10.in_(isbns),
+                        Book.isbn_13.in_(isbns),
+                    )
                 )
+                .limit(1)
             )
             duplicate = (await session.execute(stmt)).scalar_one_or_none()
             if duplicate is not None:

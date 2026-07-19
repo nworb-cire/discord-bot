@@ -178,6 +178,10 @@ class VotingSession(commands.Cog):
         stmt = (
             select(
                 Book.id.label("book_id"),
+                Book.title.label("title"),
+                Book.isbn_10.label("isbn_10"),
+                Book.isbn_13.label("isbn_13"),
+                Book.primary_author.label("primary_author"),
                 Book.created_at.label("created_at"),
                 func.coalesce(nominations_table.c.reactions, 0).label("reactions"),
                 func.coalesce(sub_votes.c.vote_sum, 0).label("vote_sum"),
@@ -200,7 +204,7 @@ class VotingSession(commands.Cog):
         rows = result.all()
         if not rows:
             return []
-        candidates: list[BallotNominee] = []
+        candidates: list[tuple[BallotNominee, tuple[tuple[str, ...], ...]]] = []
         for row in rows:
             book_id = int(row.book_id)
             prior_appearances = int(getattr(row, "appearance_count", 0) or 0)
@@ -211,32 +215,62 @@ class VotingSession(commands.Cog):
             created_at = getattr(row, "created_at", None)
             if created_at is None:
                 created_at = datetime.fromtimestamp(0, tz=timezone.utc)
+            candidate = BallotNominee(
+                book_id=book_id,
+                reactions=int(row.reactions),
+                vote_sum=vote_sum,
+                score=score,
+                prior_appearances=prior_appearances,
+                created_at=created_at,
+            )
             candidates.append(
-                BallotNominee(
-                    book_id=book_id,
-                    reactions=int(row.reactions),
-                    vote_sum=vote_sum,
-                    score=score,
-                    prior_appearances=prior_appearances,
-                    created_at=created_at,
+                (
+                    candidate,
+                    self._book_identities(row, fallback_book_id=book_id),
                 )
             )
-        max_score = max(c.score for c in candidates)
-        ordered_entries = [
-            nominee
-            for nominee in sorted(
-                candidates,
-                key=lambda item: (
-                    item.score != max_score,
-                    item.prior_appearances > 0,
-                    -item.score,
-                    item.created_at.timestamp(),
-                ),
-            )
-        ]
+        max_score = max(candidate.score for candidate, _identity in candidates)
+        ordered_candidates = sorted(
+            candidates,
+            key=lambda entry: (
+                entry[0].score != max_score,
+                entry[0].prior_appearances > 0,
+                -entry[0].score,
+                entry[0].created_at.timestamp(),
+            ),
+        )
+        ordered_entries: list[BallotNominee] = []
+        seen_book_identities: set[tuple[str, ...]] = set()
+        for candidate, identities in ordered_candidates:
+            if any(identity in seen_book_identities for identity in identities):
+                continue
+            seen_book_identities.update(identities)
+            ordered_entries.append(candidate)
         if limit > 0:
             ordered_entries = ordered_entries[:limit]
         return ordered_entries
+
+    @staticmethod
+    def _book_identities(row, *, fallback_book_id: int) -> tuple[tuple[str, ...], ...]:
+        """Return work identities used to prevent duplicate ballot entries."""
+        identities: list[tuple[str, ...]] = []
+        isbn_13 = "".join(filter(str.isalnum, str(getattr(row, "isbn_13", "") or "")))
+        if isbn_13:
+            identities.append(("isbn_13", isbn_13.casefold()))
+
+        isbn_10 = "".join(filter(str.isalnum, str(getattr(row, "isbn_10", "") or "")))
+        if isbn_10:
+            identities.append(("isbn_10", isbn_10.casefold()))
+
+        title = " ".join(str(getattr(row, "title", "") or "").casefold().split())
+        author = " ".join(
+            str(getattr(row, "primary_author", "") or "").casefold().split()
+        )
+        if title or author:
+            identities.append(("title_author", title, author))
+        if identities:
+            return tuple(identities)
+        return (("book_id", str(fallback_book_id)),)
 
     @app_commands.command(
         name="open_voting",

@@ -166,6 +166,62 @@ async def test_get_top_noms_uses_created_at_for_tiebreak(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_top_noms_deduplicates_repeat_nominations(monkeypatch):
+    created_old = datetime(2023, 5, 1, tzinfo=timezone.utc)
+    created_new = datetime(2023, 6, 1, tzinfo=timezone.utc)
+    session = DummySession(
+        execute_results=[
+            DummyResult(
+                rows=[
+                    SimpleNamespace(
+                        book_id=1,
+                        title="The Same Book",
+                        primary_author="An Author",
+                        isbn_10="0395193958",
+                        isbn_13="9780395193952",
+                        reactions=2,
+                        vote_sum=2.0,
+                        score=4.0,
+                        appearance_count=0,
+                        created_at=created_old,
+                    ),
+                    SimpleNamespace(
+                        book_id=2,
+                        title="The Same Book: A Subtitle",
+                        primary_author="An Author",
+                        isbn_10="0395193958",
+                        isbn_13="978-0-395-19395-2",
+                        reactions=3,
+                        vote_sum=2.0,
+                        score=5.0,
+                        appearance_count=0,
+                        created_at=created_new,
+                    ),
+                    SimpleNamespace(
+                        book_id=3,
+                        title="A Different Book",
+                        primary_author="Another Author",
+                        isbn_10=None,
+                        isbn_13="9780000000002",
+                        reactions=1,
+                        vote_sum=0.0,
+                        score=1.0,
+                        appearance_count=0,
+                        created_at=created_new,
+                    ),
+                ]
+            )
+        ]
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    monkeypatch.setattr(vs, "update_all_nominations", AsyncMock())
+
+    result = await vs.get_top_noms(session, limit=5)
+
+    assert [nom.book_id for nom in result] == [2, 3]
+
+
+@pytest.mark.asyncio
 async def test_open_voting_aborts_if_open(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()
