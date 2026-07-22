@@ -36,7 +36,7 @@ def test_close_and_tally_announces_winner(monkeypatch):
         assert winner is book
         assert election.winner == book.id
         assert session.execute.await_count == 1
-        assert session.commit.await_count == 2
+        assert session.commit.await_count == 1
 
         embed = channel.send.await_args.kwargs["embed"]
         assert embed.title == "Election Results"
@@ -44,6 +44,34 @@ def test_close_and_tally_announces_winner(monkeypatch):
         assert embed.fields[0]["value"] == book.title
         assert embed.fields[1]["name"].startswith("1.")
         assert embed.fields[1]["value"].startswith("Votes: 3.5")
+
+    asyncio.run(_run())
+
+
+def test_close_and_tally_fetches_uncached_channel(monkeypatch):
+    async def _run():
+        election = SimpleNamespace(id=7, winner=None)
+        channel = SimpleNamespace(send=AsyncMock())
+        client = SimpleNamespace(
+            get_channel=lambda _: None,
+            fetch_channel=AsyncMock(return_value=channel),
+        )
+        session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
+
+        monkeypatch.setattr(
+            election_mod, "settings", SimpleNamespace(bookclub_channel_id=99)
+        )
+        monkeypatch.setattr(
+            election_mod,
+            "get_election_vote_totals",
+            AsyncMock(return_value=[]),
+        )
+
+        await election_mod.close_and_tally(client, session, election)
+
+        session.commit.assert_awaited_once()
+        client.fetch_channel.assert_awaited_once_with(99)
+        channel.send.assert_awaited_once()
 
     asyncio.run(_run())
 

@@ -431,10 +431,11 @@ class VotingSession(commands.Cog):
     @app_commands.default_permissions(Permissions(manage_roles=True))
     @handle_interaction_errors()
     async def close_voting(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         async with async_session() as session:
             election = await get_open_election(session)
             if not election:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "No open election found.", ephemeral=True
                 )
                 return
@@ -442,11 +443,11 @@ class VotingSession(commands.Cog):
                 self.bot, session, election, closed_by=interaction.user.id
             )
         if winner:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Election closed and results announced.", ephemeral=True
             )
         else:
-            await interaction.response.send_message("No votes were cast.")
+            await interaction.followup.send("No votes were cast.", ephemeral=True)
 
     @app_commands.command(
         name="extend_voting",

@@ -34,7 +34,7 @@ async def close_and_tally(client, session, election, closed_by=None):
     winner, _ = all_votes[0] if all_votes else (None, 0)
     if winner:
         election.winner = winner.id
-        await session.commit()
+    await session.commit()
 
     embed = discord.Embed(title="Election Results", description="Voting has ended.")
     embed.add_field(
@@ -46,6 +46,8 @@ async def close_and_tally(client, session, election, closed_by=None):
             value=f"Votes: {format_vote_count(votes)}",
             inline=False,
         )
-    await client.get_channel(settings.bookclub_channel_id).send(embed=embed)
-    await session.commit()
+    channel = client.get_channel(settings.bookclub_channel_id)
+    if channel is None:
+        channel = await client.fetch_channel(settings.bookclub_channel_id)
+    await channel.send(embed=embed)
     return winner

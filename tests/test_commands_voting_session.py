@@ -457,7 +457,8 @@ async def test_close_voting_handles_missing(monkeypatch):
 
     await vs.close_voting(interaction)
 
-    assert interaction.response.messages[0]["content"] == "No open election found."
+    assert interaction.response.deferred is True
+    assert interaction.followup.messages[0]["content"] == "No open election found."
 
 
 @pytest.mark.asyncio
@@ -480,8 +481,9 @@ async def test_close_voting_announces_result(monkeypatch):
 
     await vs.close_voting(interaction)
 
+    assert interaction.response.deferred is True
     assert (
-        interaction.response.messages[0]["content"]
+        interaction.followup.messages[0]["content"]
         == "Election closed and results announced."
     )
 
@@ -505,7 +507,9 @@ async def test_close_voting_handles_no_votes(monkeypatch):
 
     await vs.close_voting(interaction)
 
-    assert interaction.response.messages[0]["content"] == "No votes were cast."
+    assert interaction.response.deferred is True
+    assert interaction.followup.messages[0]["content"] == "No votes were cast."
+    assert interaction.followup.messages[0]["ephemeral"] is True
 
 
 @pytest.mark.asyncio
