@@ -14,6 +14,7 @@ from bot.db import async_session, Nomination, Election, Vote, Book
 from bot.reactions import update_election_vote_reaction, DiscordNotFound
 from bot.election import close_and_tally, get_election_vote_totals
 from bot.utils import (
+    MAX_BALLOT_SIZE,
     NOMINATION_CANCEL_EMOJI,
     format_vote_count,
     get_open_election,
@@ -286,8 +287,13 @@ class VotingSession(commands.Cog):
         self,
         interaction: discord.Interaction,
         hours: int = 72,
-        ballot_size: int = 5,
+        ballot_size: app_commands.Range[int, 1, MAX_BALLOT_SIZE] = MAX_BALLOT_SIZE,
     ):
+        if not 1 <= ballot_size <= MAX_BALLOT_SIZE:
+            raise UserFacingError(
+                f"Ballot size must be between 1 and {MAX_BALLOT_SIZE} so it fits "
+                "in Discord's voting form."
+            )
         await interaction.response.defer(ephemeral=True)
         now = utcnow()
         async with async_session() as session:

@@ -19,6 +19,7 @@ from bot.db import Election
 NOMINATION_CANCEL_EMOJI = "❌"
 settings = get_settings()
 MOUNTAIN = ZoneInfo("America/Denver")
+MAX_BALLOT_SIZE = 5
 
 
 def utcnow() -> datetime:

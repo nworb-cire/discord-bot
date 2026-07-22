@@ -5,9 +5,17 @@ import pytest
 
 from bot.commands.vote import Ballot, BallotModal
 from bot.config import get_settings
+from bot.utils import UserFacingError
 from tests.utils import DummyInteraction, DummyResult, DummySession, session_cm
 
 settings = get_settings()
+
+
+def test_ballot_modal_rejects_more_than_five_books():
+    books = [SimpleNamespace(id=index, title=f"Book {index}") for index in range(6)]
+
+    with pytest.raises(UserFacingError, match="election has 6 books"):
+        BallotModal(books)
 
 
 @pytest.mark.asyncio

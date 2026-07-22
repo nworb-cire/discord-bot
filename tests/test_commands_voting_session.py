@@ -332,6 +332,26 @@ async def test_open_voting_accepts_custom_ballot_size(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_open_voting_rejects_ballot_too_large():
+    interaction = DummyInteraction()
+    vs = VotingSession(bot=SimpleNamespace())
+
+    await vs.open_voting(interaction, ballot_size=6)
+
+    assert interaction.response.messages == [
+        {
+            "content": (
+                "Ballot size must be between 1 and 5 so it fits in Discord's "
+                "voting form."
+            ),
+            "ephemeral": True,
+            "embed": None,
+        }
+    ]
+    assert interaction.response.deferred is False
+
+
+@pytest.mark.asyncio
 async def test_open_voting_requires_ballot(monkeypatch):
     interaction = DummyInteraction()
     session = DummySession()

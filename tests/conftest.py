@@ -105,6 +105,12 @@ if "discord" not in sys.modules:
     app_commands_module.command = _decorator
     app_commands_module.default_permissions = _decorator
     app_commands_module.describe = _decorator
+
+    class _Range:
+        def __class_getitem__(cls, _params):
+            return int
+
+    app_commands_module.Range = _Range
     discord_module.app_commands = app_commands_module
 
     ext_module = types.ModuleType("discord.ext")

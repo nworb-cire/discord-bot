@@ -10,7 +10,13 @@ from sqlalchemy.future import select
 from bot.config import get_settings
 from bot.db import async_session, Book, Vote
 from bot.reactions import update_election_vote_reaction
-from bot.utils import get_open_election, handle_interaction_errors, short_book_title
+from bot.utils import (
+    MAX_BALLOT_SIZE,
+    UserFacingError,
+    get_open_election,
+    handle_interaction_errors,
+    short_book_title,
+)
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -18,6 +24,12 @@ settings = get_settings()
 
 class BallotModal(discord.ui.Modal, title="Vote"):
     def __init__(self, noms: list[Book], is_bookclub: bool = False):
+        if len(noms) > MAX_BALLOT_SIZE:
+            raise UserFacingError(
+                f"This election has {len(noms)} books, but Discord voting forms "
+                f"support at most {MAX_BALLOT_SIZE}. An admin needs to close and "
+                "reopen the election with a smaller ballot."
+            )
         super().__init__()
         self.is_bookclub = is_bookclub
         self.title = f"Points to distribute: {settings.weight_inner if is_bookclub else settings.weight_outer}"
