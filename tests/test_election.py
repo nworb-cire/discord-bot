@@ -4,7 +4,24 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from sqlalchemy.dialects import postgresql
+
 from bot import election as election_mod
+from tests.utils import DummyResult
+
+
+def test_get_election_vote_totals_groups_only_vote_book_ids():
+    async def _run():
+        session = SimpleNamespace(execute=AsyncMock(return_value=DummyResult(rows=[])))
+
+        assert await election_mod.get_election_vote_totals(session, 7) == []
+
+        stmt = session.execute.await_args.args[0]
+        sql = str(stmt.compile(dialect=postgresql.dialect()))
+        assert "GROUP BY votes.book_id" in sql
+        assert "GROUP BY books." not in sql
+
+    asyncio.run(_run())
 
 
 def test_close_and_tally_announces_winner(monkeypatch):

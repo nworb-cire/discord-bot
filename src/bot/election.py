@@ -10,12 +10,19 @@ settings = get_settings()
 
 
 async def get_election_vote_totals(session, election_id):
-    result = await session.execute(
-        select(Book, func.sum(Vote.weight).label("total_votes"))
-        .join(Vote, Book.id == Vote.book_id)
+    vote_totals = (
+        select(
+            Vote.book_id,
+            func.sum(Vote.weight).label("total_votes"),
+        )
         .where(Vote.election_id == election_id)
-        .group_by(Book)
-        .order_by(func.sum(Vote.weight).desc())
+        .group_by(Vote.book_id)
+        .subquery()
+    )
+    result = await session.execute(
+        select(Book, vote_totals.c.total_votes)
+        .join(vote_totals, Book.id == vote_totals.c.book_id)
+        .order_by(vote_totals.c.total_votes.desc())
     )
     return [(book, float(total or 0.0)) for book, total in result.all()]
 
