@@ -381,7 +381,11 @@ async def test_election_embed_posts_summary(monkeypatch):
         execute_results=[
             DummyResult(scalars=[SimpleNamespace(book_id=1, message_id=99)]),
             DummyResult(
-                scalars=[SimpleNamespace(id=1, title="Book", summary=long_summary)]
+                scalars=[
+                    SimpleNamespace(
+                        id=1, title="Book", summary=long_summary, length=321
+                    )
+                ]
             ),
         ],
         get_results={1: SimpleNamespace(id=1, ballot_message_id=None)},
@@ -408,7 +412,8 @@ async def test_election_embed_posts_summary(monkeypatch):
     assert embed_entry.title == "Book Club Election"
     expected_link = f"https://discord.com/channels/123/{settings.nom_channel_id}/99"
     assert embed_entry.fields[0]["name"] == f"1. Book {expected_link}"
-    assert embed_entry.fields[0]["value"].endswith("...")
+    assert embed_entry.fields[0]["value"].endswith("... (321 pages)")
+    assert len(embed_entry.fields[0]["value"]) == 1024
     assert interaction.followup.messages[0]["content"] == "Election opened."
     update_mock.assert_awaited_once_with(interaction.client, 1)
 

@@ -362,8 +362,12 @@ class VotingSession(commands.Cog):
                     else f"{idx}. {title}"
                 )
                 summary = book.summary or "No summary available."
-                if len(summary) > 1024:
-                    summary = summary[:1021] + "..."
+                page_count = getattr(book, "length", None)
+                page_count_suffix = f" ({page_count} pages)" if page_count else ""
+                max_summary_length = 1024 - len(page_count_suffix)
+                if len(summary) > max_summary_length:
+                    summary = summary[: max_summary_length - 3] + "..."
+                summary += page_count_suffix
                 embed.add_field(name=field_name, value=summary, inline=False)
         channel = interaction.client.get_channel(settings.bookclub_channel_id)
         if channel is None:
