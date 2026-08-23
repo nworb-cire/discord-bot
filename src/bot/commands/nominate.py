@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Nomination
+from bot.goodreads import GoodreadsLookup, GoodreadsRating, format_goodreads_rating
 from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
     UserFacingError,
@@ -246,6 +247,8 @@ class Nominate(commands.Cog):
                 )
                 return
 
+            goodreads_rating = await self.lookup_goodreads_rating(lookup)
+
             book = await self._find_duplicate_book(session, lookup)
             if book is not None:
                 nomination = await self._find_nomination_for_book(session, book)
@@ -254,9 +257,12 @@ class Nominate(commands.Cog):
                         "Creating a fresh book entry for repeat nomination of {}",
                         book.title,
                     )
-                    book = await self._create_book(session, lookup)
+                    book = await self._create_book(session, lookup, goodreads_rating)
+                elif goodreads_rating is not None:
+                    self._apply_goodreads_rating(book, goodreads_rating)
+                    session.add(book)
             else:
-                book = await self._create_book(session, lookup)
+                book = await self._create_book(session, lookup, goodreads_rating)
 
             nomination = await self._create_nomination(
                 session, book, interaction.user.id
@@ -271,7 +277,9 @@ class Nominate(commands.Cog):
             )
 
     @staticmethod
-    def _book_from_lookup(lookup: BookLookupResult) -> Book:
+    def _book_from_lookup(
+        lookup: BookLookupResult, goodreads_rating: GoodreadsRating | None = None
+    ) -> Book:
         return Book(
             title=lookup.full_title,
             description=lookup.description or "",
@@ -281,14 +289,28 @@ class Nominate(commands.Cog):
             authors=lookup.authors,
             primary_author=lookup.authors[0],
             length=lookup.page_count,
+            goodreads_rating=(goodreads_rating.score if goodreads_rating else None),
+            goodreads_rating_count=(
+                goodreads_rating.rating_count if goodreads_rating else None
+            ),
         )
 
-    async def _create_book(self, session: Any, lookup: BookLookupResult) -> Book:
-        book = self._book_from_lookup(lookup)
+    async def _create_book(
+        self,
+        session: Any,
+        lookup: BookLookupResult,
+        goodreads_rating: GoodreadsRating | None = None,
+    ) -> Book:
+        book = self._book_from_lookup(lookup, goodreads_rating)
         session.add(book)
         await session.flush()
         logger.info("Inserted new book {}", book.title)
         return book
+
+    @staticmethod
+    def _apply_goodreads_rating(book: Book, rating: GoodreadsRating) -> None:
+        book.goodreads_rating = rating.score
+        book.goodreads_rating_count = rating.rating_count
 
     @staticmethod
     async def _create_nomination(
@@ -308,6 +330,12 @@ class Nominate(commands.Cog):
     @staticmethod
     def _nomination_embed(book: Book, nominator_mention: str) -> discord.Embed:
         summary_text = book.summary or "No summary available."
+        goodreads_text = format_goodreads_rating(
+            getattr(book, "goodreads_rating", None),
+            getattr(book, "goodreads_rating_count", None),
+        )
+        if goodreads_text:
+            summary_text += f"\n\nGoodreads: {goodreads_text}"
         summary_text += f"\n\nNominated by {nominator_mention}."
         if book.length:
             summary_text += f" {book.length} pages."
@@ -494,6 +522,34 @@ class Nominate(commands.Cog):
             _openai_response_details(response),
         )
         return lookup
+
+    async def lookup_goodreads_rating(
+        self, lookup: BookLookupResult
+    ) -> GoodreadsRating | None:
+        try:
+            rating = await GoodreadsLookup(
+                timeout_seconds=settings.goodreads_lookup_timeout_seconds
+            ).lookup(
+                title=lookup.title,
+                author=lookup.authors[0],
+                isbn=lookup.preferred_isbn,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Goodreads rating lookup failed title={!r} author={!r} error_type={}",
+                lookup.title,
+                lookup.authors[0],
+                type(exc).__name__,
+            )
+            return None
+        if rating is not None:
+            logger.info(
+                "Goodreads rating lookup resolved title={!r} score={} rating_count={}",
+                lookup.title,
+                rating.score,
+                rating.rating_count,
+            )
+        return rating
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):

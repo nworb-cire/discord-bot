@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     openai_book_lookup_max_output_tokens: int = Field(
         default=4000, alias="OPENAI_BOOK_LOOKUP_MAX_OUTPUT_TOKENS"
     )
+    goodreads_lookup_timeout_seconds: float = Field(
+        default=10.0, alias="GOODREADS_LOOKUP_TIMEOUT_SECONDS"
+    )
     openai_prediction_evidence_model: str = Field(
         default="gpt-5.6-luna", alias="OPENAI_PREDICTION_EVIDENCE_MODEL"
     )

@@ -12,6 +12,7 @@ from bot.commands.nominate import (
     Nominate,
 )
 from bot.db import Book, Nomination
+from bot.goodreads import GoodreadsRating
 from bot.utils import NOMINATION_CANCEL_EMOJI, utcnow
 from tests.utils import (
     DummyChannel,
@@ -22,6 +23,13 @@ from tests.utils import (
 )
 
 settings = get_settings()
+
+
+@pytest.fixture(autouse=True)
+def disable_goodreads_lookup(monkeypatch):
+    monkeypatch.setattr(
+        Nominate, "lookup_goodreads_rating", AsyncMock(return_value=None)
+    )
 
 
 async def flush_tasks():
@@ -249,6 +257,41 @@ async def test_nominate_creates_book_and_posts_embed(monkeypatch):
     assert book.length == 321
     nomination = next(obj for obj in session.added if isinstance(obj, Nomination))
     assert nomination.message_id == 1
+
+
+@pytest.mark.asyncio
+async def test_nominate_persists_and_displays_goodreads_rating(monkeypatch):
+    async def commit_hook(session):
+        for obj in session.added:
+            if isinstance(obj, Book) and getattr(obj, "id", None) is None:
+                obj.id = 42
+
+    session = DummySession(
+        execute_results=[DummyResult(scalar=None), DummyResult(scalars=[])],
+        commit_hook=commit_hook,
+    )
+    monkeypatch.setattr(
+        "bot.commands.nominate.async_session", lambda: session_cm(session)
+    )
+    cog = Nominate(bot=SimpleNamespace())
+    monkeypatch.setattr(cog, "lookup_book", AsyncMock(return_value=lookup_result()))
+    monkeypatch.setattr(
+        cog,
+        "lookup_goodreads_rating",
+        AsyncMock(return_value=GoodreadsRating(score=3.74, rating_count=4720)),
+    )
+    nom_channel = DummyChannel(2)
+    interaction = DummyInteraction(
+        user_id=99,
+        client=SimpleNamespace(get_channel=lambda _cid: nom_channel),
+    )
+
+    await cog.nominate(interaction, "The Title by The Author")
+
+    book = next(obj for obj in session.added if isinstance(obj, Book))
+    assert book.goodreads_rating == 3.74
+    assert book.goodreads_rating_count == 4720
+    assert "Goodreads: 3.7⭐️ (4,720)" in nom_channel.messages[0]["embed"].description
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,7 @@ from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
 from bot.reactions import update_election_vote_reaction, DiscordNotFound
 from bot.election import close_and_tally, get_election_vote_totals
+from bot.goodreads import format_goodreads_rating
 from bot.utils import (
     MAX_BALLOT_SIZE,
     NOMINATION_CANCEL_EMOJI,
@@ -363,11 +364,19 @@ class VotingSession(commands.Cog):
                 )
                 summary = book.summary or "No summary available."
                 page_count = getattr(book, "length", None)
+                goodreads_text = format_goodreads_rating(
+                    getattr(book, "goodreads_rating", None),
+                    getattr(book, "goodreads_rating_count", None),
+                )
+                goodreads_suffix = (
+                    f"\n\nGoodreads: {goodreads_text}" if goodreads_text else ""
+                )
                 page_count_suffix = f" ({page_count} pages)" if page_count else ""
-                max_summary_length = 1024 - len(page_count_suffix)
+                details_suffix = goodreads_suffix + page_count_suffix
+                max_summary_length = 1024 - len(details_suffix)
                 if len(summary) > max_summary_length:
                     summary = summary[: max_summary_length - 3] + "..."
-                summary += page_count_suffix
+                summary += details_suffix
                 embed.add_field(name=field_name, value=summary, inline=False)
         channel = interaction.client.get_channel(settings.bookclub_channel_id)
         if channel is None:

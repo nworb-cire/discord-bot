@@ -55,6 +55,8 @@ class Book(Base):
     authors: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     primary_author: Mapped[str | None] = mapped_column(Text, nullable=True)
     length: Mapped[int] = mapped_column(Integer, nullable=True)
+    goodreads_rating: Mapped[float | None] = mapped_column(Numeric(3, 2), nullable=True)
+    goodreads_rating_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime.utcnow
     )

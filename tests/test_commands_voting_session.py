@@ -419,6 +419,49 @@ async def test_election_embed_posts_summary(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_election_embed_displays_goodreads_rating(monkeypatch):
+    session = DummySession(
+        execute_results=[
+            DummyResult(scalars=[SimpleNamespace(book_id=1, message_id=99)]),
+            DummyResult(
+                scalars=[
+                    SimpleNamespace(
+                        id=1,
+                        title="Book",
+                        summary="Summary",
+                        length=321,
+                        goodreads_rating=3.74,
+                        goodreads_rating_count=4720,
+                    )
+                ]
+            ),
+        ],
+        get_results={1: SimpleNamespace(id=1, ballot_message_id=None)},
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.async_session", lambda: session_cm(session)
+    )
+    monkeypatch.setattr(
+        "bot.commands.voting_session.update_election_vote_reaction", AsyncMock()
+    )
+    vs = VotingSession(bot=SimpleNamespace())
+    channel = DummyChannel(2)
+    interaction = DummyInteraction(
+        client=SimpleNamespace(get_channel=lambda _cid: channel)
+    )
+    interaction.guild_id = 123
+
+    await vs._election_embed(
+        interaction, 1, [1], datetime(2024, 1, 1, tzinfo=timezone.utc)
+    )
+
+    assert (
+        channel.messages[0]["embed"].fields[0]["value"]
+        == "Summary\n\nGoodreads: 3.7⭐️ (4,720) (321 pages)"
+    )
+
+
+@pytest.mark.asyncio
 async def test_election_embed_marks_third_appearance(monkeypatch):
     session = DummySession(
         execute_results=[
