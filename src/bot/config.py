@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     goodreads_lookup_timeout_seconds: float = Field(
         default=10.0, alias="GOODREADS_LOOKUP_TIMEOUT_SECONDS"
     )
+    goodreads_backfill_interval_seconds: float = Field(
+        default=60.0, alias="GOODREADS_BACKFILL_INTERVAL_SECONDS"
+    )
     openai_prediction_evidence_model: str = Field(
         default="gpt-5.6-luna", alias="OPENAI_PREDICTION_EVIDENCE_MODEL"
     )
