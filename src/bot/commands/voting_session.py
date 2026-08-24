@@ -13,7 +13,7 @@ from bot.config import get_settings
 from bot.db import async_session, Nomination, Election, Vote, Book
 from bot.reactions import update_election_vote_reaction, DiscordNotFound
 from bot.election import close_and_tally, get_election_vote_totals
-from bot.goodreads import format_goodreads_rating
+from bot.book_metadata import format_book_metadata
 from bot.utils import (
     MAX_BALLOT_SIZE,
     NOMINATION_CANCEL_EMOJI,
@@ -363,16 +363,8 @@ class VotingSession(commands.Cog):
                     else f"{idx}. {title}"
                 )
                 summary = book.summary or "No summary available."
-                page_count = getattr(book, "length", None)
-                goodreads_text = format_goodreads_rating(
-                    getattr(book, "goodreads_rating", None),
-                    getattr(book, "goodreads_rating_count", None),
-                )
-                goodreads_suffix = (
-                    f"\n\nGoodreads: {goodreads_text}" if goodreads_text else ""
-                )
-                page_count_suffix = f" ({page_count} pages)" if page_count else ""
-                details_suffix = goodreads_suffix + page_count_suffix
+                metadata = format_book_metadata(book)
+                details_suffix = f"\n\n{metadata}" if metadata else ""
                 max_summary_length = 1024 - len(details_suffix)
                 if len(summary) > max_summary_length:
                     summary = summary[: max_summary_length - 3] + "..."
@@ -603,12 +595,16 @@ class VotingSession(commands.Cog):
                     if jump_url is not None
                     else f"{idx}. {title}"
                 )
+                metadata = format_book_metadata(book)
+                value = (
+                    f"Score: {_format_score(nominee.score)} "
+                    f"({format_vote_count(nominee.vote_sum)} votes + {nominee.reactions} seconds)"
+                )
+                if metadata:
+                    value += f"\n{metadata}"
                 embed.add_field(
                     name=field_name,
-                    value=(
-                        f"Score: {_format_score(nominee.score)} "
-                        f"({format_vote_count(nominee.vote_sum)} votes + {nominee.reactions} seconds)"
-                    ),
+                    value=value,
                     inline=False,
                 )
         await interaction.followup.send(embed=embed, ephemeral=True)

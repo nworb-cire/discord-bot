@@ -412,7 +412,7 @@ async def test_election_embed_posts_summary(monkeypatch):
     assert embed_entry.title == "Book Club Election"
     expected_link = f"https://discord.com/channels/123/{settings.nom_channel_id}/99"
     assert embed_entry.fields[0]["name"] == f"1. Book {expected_link}"
-    assert embed_entry.fields[0]["value"].endswith("... (321 pages)")
+    assert embed_entry.fields[0]["value"].endswith("...\n\n321 pages")
     assert len(embed_entry.fields[0]["value"]) == 1024
     assert interaction.followup.messages[0]["content"] == "Election opened."
     update_mock.assert_awaited_once_with(interaction.client, 1)
@@ -457,7 +457,7 @@ async def test_election_embed_displays_goodreads_rating(monkeypatch):
 
     assert (
         channel.messages[0]["embed"].fields[0]["value"]
-        == "Summary\n\nGoodreads: 3.7⭐️ (4,720) (321 pages)"
+        == "Summary\n\nGoodreads: 3.7⭐️ (4,720) · 321 pages"
     )
 
 
@@ -794,7 +794,14 @@ async def test_ballot_preview_sends_embed(monkeypatch):
             ),
             DummyResult(
                 scalars=[
-                    SimpleNamespace(id=1, title="Book One", summary="Summary"),
+                    SimpleNamespace(
+                        id=1,
+                        title="Book One",
+                        summary="Summary",
+                        length=321,
+                        goodreads_rating=3.74,
+                        goodreads_rating_count=4720,
+                    ),
                     SimpleNamespace(id=2, title="Book Two", summary="Details"),
                 ]
             ),
@@ -847,7 +854,10 @@ async def test_ballot_preview_sends_embed(monkeypatch):
     assert (
         embed.fields[0]["name"] == f"1. Book One{star_suffix} {expected_preview_link}"
     )
-    assert embed.fields[0]["value"] == "Score: 3 (1 votes + 2 seconds)"
+    assert (
+        embed.fields[0]["value"]
+        == "Score: 3 (1 votes + 2 seconds)\nGoodreads: 3.7⭐️ (4,720) · 321 pages"
+    )
 
 
 @pytest.mark.asyncio

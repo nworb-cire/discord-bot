@@ -13,7 +13,8 @@ from sqlalchemy import func, or_, select
 
 from bot.config import get_settings
 from bot.db import async_session, Book, Nomination
-from bot.goodreads import GoodreadsLookup, GoodreadsRating, format_goodreads_rating
+from bot.book_metadata import format_book_metadata
+from bot.goodreads import GoodreadsLookup, GoodreadsRating
 from bot.utils import (
     NOMINATION_CANCEL_EMOJI,
     UserFacingError,
@@ -330,15 +331,10 @@ class Nominate(commands.Cog):
     @staticmethod
     def _nomination_embed(book: Book, nominator_mention: str) -> discord.Embed:
         summary_text = book.summary or "No summary available."
-        goodreads_text = format_goodreads_rating(
-            getattr(book, "goodreads_rating", None),
-            getattr(book, "goodreads_rating_count", None),
-        )
-        if goodreads_text:
-            summary_text += f"\n\nGoodreads: {goodreads_text}"
+        metadata = format_book_metadata(book)
+        if metadata:
+            summary_text += f"\n\n{metadata}"
         summary_text += f"\n\nNominated by {nominator_mention}."
-        if book.length:
-            summary_text += f" {book.length} pages."
         return discord.Embed(title=book.title, description=summary_text)
 
     @staticmethod
