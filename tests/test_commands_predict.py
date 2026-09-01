@@ -36,10 +36,44 @@ async def test_predict_records_prediction(monkeypatch):
     assert record.text == "We read more sci-fi"
     assert float(record.odds) == pytest.approx(60.0)
     assert record.due_at == datetime(2024, 1, 10, 0, 0)
+    assert record.secret is False
     assert session.commit_calls == 1
     assert interaction.response.deferred is True
     response = interaction.followup.messages[0]
     assert response["ephemeral"] is True
+
+
+@pytest.mark.asyncio
+async def test_predict_keeps_secret_prediction_private(monkeypatch):
+    session = DummySession()
+    monkeypatch.setattr(
+        "bot.commands.predict.async_session", lambda: session_cm(session)
+    )
+    predictions_channel = DummyChannel(5, guild_id=42)
+    bot = SimpleNamespace(
+        get_channel=lambda _cid: predictions_channel, fetch_channel=AsyncMock()
+    )
+    interaction = DummyInteraction()
+    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr("bot.commands.predict.utcnow", lambda: base)
+
+    await Predict(bot).predict(
+        interaction,
+        due="2024-01-10",
+        text="A secret claim",
+        probability=60,
+        secret=True,
+    )
+
+    assert predictions_channel.messages == []
+    assert interaction.channel.messages == []
+    record = session.added[0]
+    assert record.secret is True
+    assert record.message_id is None
+    response = interaction.followup.messages[0]
+    assert response["ephemeral"] is True
+    assert "remain secret until then" in response["content"]
+    assert "A secret claim" not in response["content"]
 
 
 @pytest.mark.asyncio

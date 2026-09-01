@@ -113,7 +113,8 @@ class Prediction(Base):
     text: Mapped[str] = mapped_column(Text)
     odds: Mapped[float] = mapped_column(Numeric(4, 1))
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
-    message_id: Mapped[int] = mapped_column(BigInteger)
+    message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    secret: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime.utcnow
     )

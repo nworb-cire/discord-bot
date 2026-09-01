@@ -35,6 +35,7 @@ class Predict(commands.Cog):
         due="Due date for judging (YYYY-MM-DD or ISO datetime).",
         text="Prediction text.",
         probability="Probability percent (0-100, exclusive).",
+        secret="Keep the prediction private until its due date.",
     )
     @handle_interaction_errors()
     async def predict(
@@ -43,6 +44,7 @@ class Predict(commands.Cog):
         due: str,
         text: str,
         probability: float,
+        secret: bool = False,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
@@ -59,10 +61,6 @@ class Predict(commands.Cog):
         if not prediction_text:
             raise UserFacingError("Prediction text cannot be empty.")
 
-        channel = self.bot.get_channel(settings.predictions_channel_id)
-        if channel is None:
-            channel = await self.bot.fetch_channel(settings.predictions_channel_id)
-
         due_timestamp = int(due_at_local.astimezone(timezone.utc).timestamp())
         lines = [
             f"**Prediction from {interaction.user.mention}**",
@@ -71,7 +69,13 @@ class Predict(commands.Cog):
         ]
         lines.append(f"Confidence: {probability_percent:.1f}%")
         message_payload = "\n".join(lines)
-        message = await channel.send(message_payload)
+        channel = None
+        message = None
+        if not secret:
+            channel = self.bot.get_channel(settings.predictions_channel_id)
+            if channel is None:
+                channel = await self.bot.fetch_channel(settings.predictions_channel_id)
+            message = await channel.send(message_payload)
 
         async with async_session() as session:
             record = Prediction(
@@ -79,13 +83,14 @@ class Predict(commands.Cog):
                 text=prediction_text,
                 odds=probability_percent,
                 due_at=due_at_local.replace(tzinfo=None),
-                message_id=message.id,
+                message_id=message.id if message is not None else None,
+                secret=secret,
             )
             session.add(record)
             await session.commit()
 
         link = getattr(message, "jump_url", None)
-        if link is None:
+        if message is not None and link is None:
             guild_id = getattr(channel, "guild", None)
             guild_id = getattr(guild_id, "id", None)
             if guild_id is not None:
@@ -94,12 +99,15 @@ class Predict(commands.Cog):
                 )
 
         if (
-            interaction.channel
+            not secret
+            and interaction.channel
             and interaction.channel.id != settings.predictions_channel_id
         ):
             await interaction.channel.send(message_payload)
 
         response_lines = [f"Prediction scheduled for <t:{due_timestamp}:D>."]
+        if secret:
+            response_lines.append("It will remain secret until then.")
         if link:
             response_lines.append(f"View it [here]({link}).")
         await interaction.followup.send(" ".join(response_lines), ephemeral=True)
