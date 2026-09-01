@@ -94,7 +94,12 @@ async def find_prediction_evidence(
             model=settings.openai_prediction_evidence_model,
             reasoning={"effort": settings.openai_prediction_evidence_reasoning_effort},
             instructions=(
-                "Use web search to find conclusive evidence for or against the "
+                "First determine whether the prediction can feasibly be resolved "
+                "from public news sources. If it concerns Discord server users, "
+                "server members, their behavior, or other private/local activity, "
+                "immediately return no evidence without searching the web. Only use "
+                "web search for predictions that can realistically be looked up in "
+                "public news. For those, find conclusive evidence for or against the "
                 "prediction. Include a source URL and a brief explanation for each "
                 "result. Return no evidence when the available sources are "
                 "inconclusive."

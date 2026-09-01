@@ -79,6 +79,8 @@ def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
         local_due = now.astimezone(ZoneInfo("America/Denver")).replace(tzinfo=None)
         prediction = SimpleNamespace(
             text="Read more sci-fi",
+            predictor_discord_id=123,
+            created_at=datetime(2023, 12, 25, 18, 0, tzinfo=timezone.utc),
             reminded=False,
             message_id=17,
             due_at=local_due,
@@ -111,6 +113,7 @@ def test_send_prediction_reminders_marks_and_notifies(monkeypatch):
         assert prediction.reminded is True
         message = channel.send.await_args.args[0]
         assert "Reminder to adjudicate prediction" in message
+        assert "made by <@123> on <t:1703527200:f>:" in message
         assert "> Read more sci-fi" in message
         assert "https://discord.com/channels/9/5/17" in message
         assert "No conclusive evidence found by quick search." in message
@@ -125,6 +128,8 @@ def test_send_prediction_reminders_includes_prediction_evidence(monkeypatch):
         prediction = SimpleNamespace(
             id=3,
             text="Prediction with evidence",
+            predictor_discord_id=123,
+            created_at=datetime(2023, 12, 25, 18, 0, tzinfo=timezone.utc),
             reminded=False,
             message_id=None,
             due_at=now,
@@ -180,6 +185,8 @@ def test_send_prediction_reminders_marks_prediction_when_evidence_lookup_fails(
         prediction = SimpleNamespace(
             id=3,
             text="Prediction with lookup failure",
+            predictor_discord_id=123,
+            created_at=datetime(2023, 12, 25, 18, 0, tzinfo=timezone.utc),
             reminded=False,
             message_id=None,
             due_at=now,
@@ -241,7 +248,12 @@ def test_send_prediction_reminders_fetches_channel_when_missing(monkeypatch):
     async def _run():
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
         prediction = SimpleNamespace(
-            text="Reminder", reminded=False, message_id=None, due_at=now
+            text="Reminder",
+            predictor_discord_id=123,
+            created_at=datetime(2023, 12, 25, 18, 0, tzinfo=timezone.utc),
+            reminded=False,
+            message_id=None,
+            due_at=now,
         )
         session = SimpleNamespace()
         session.execute = AsyncMock(return_value=_FakeScalarResult([prediction]))

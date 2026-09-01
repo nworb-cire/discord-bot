@@ -64,8 +64,10 @@ async def send_prediction_reminders(bot: discord.Client):
                 if guild_id is not None and p.message_id is not None
                 else None
             )
+            created_timestamp = int(p.created_at.timestamp())
             lines = [
-                "Reminder to adjudicate prediction:",
+                "Reminder to adjudicate prediction made by "
+                f"<@{p.predictor_discord_id}> on <t:{created_timestamp}:f>:",
                 f"> {p.text}",
             ]
             if link:

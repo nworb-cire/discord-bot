@@ -64,6 +64,9 @@ async def test_find_prediction_evidence_uses_openai_structured_output(monkeypatc
     assert "2024-01-10" not in kwargs["input"]
     assert "source URL" in kwargs["instructions"]
     assert "conclusive" in kwargs["instructions"]
+    assert "Discord server users" in kwargs["instructions"]
+    assert "without searching the web" in kwargs["instructions"]
+    assert "public news" in kwargs["instructions"]
 
 
 @pytest.mark.asyncio
