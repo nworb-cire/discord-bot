@@ -243,13 +243,11 @@ class Summarize(commands.Cog):
     )
     @handle_interaction_errors()
     async def summarize(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         history = getattr(channel, "history", None)
         if channel is None or not callable(history):
-            raise UserFacingError(
-                "I can't read conversation history in this channel.", ephemeral=False
-            )
+            raise UserFacingError("I can't read conversation history in this channel.")
 
         try:
             messages, used_fallback = await fetch_summary_history(
@@ -263,12 +261,9 @@ class Summarize(commands.Cog):
             )
             raise UserFacingError(
                 "I couldn't read conversation history in this channel.",
-                ephemeral=False,
             ) from exc
         if not messages:
-            raise UserFacingError(
-                "There are no messages here to summarize.", ephemeral=False
-            )
+            raise UserFacingError("There are no messages here to summarize.")
 
         logger.info(
             "Fetched recent Discord conversation channel_id={} message_count={} "
@@ -281,7 +276,7 @@ class Summarize(commands.Cog):
         try:
             summary = await summarize_messages(messages)
         except SummarizationError as exc:
-            raise UserFacingError(str(exc), ephemeral=False) from exc
+            raise UserFacingError(str(exc)) from exc
 
         message_label = "message" if len(messages) == 1 else "messages"
         payload = (
@@ -289,7 +284,7 @@ class Summarize(commands.Cog):
             f"{message_label}\n\n{summary}"
         )
         allowed_mentions_cls = getattr(discord, "AllowedMentions", None)
-        send_kwargs = {"ephemeral": False}
+        send_kwargs = {"ephemeral": True}
         if allowed_mentions_cls is not None:
             send_kwargs["allowed_mentions"] = allowed_mentions_cls.none()
         for chunk in split_discord_message(payload):
