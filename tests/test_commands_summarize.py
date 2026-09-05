@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import discord
 import pytest
@@ -36,7 +36,7 @@ def message(
 def test_format_transcript_keeps_newest_messages_under_cutoff():
     messages = [message(0, "a" * 100), message(1, "newest")]
 
-    transcript, omitted = summarize_module.format_transcript(messages, max_chars=180)
+    transcript, omitted = summarize_module.format_transcript(messages, max_chars=120)
 
     assert omitted == 1
     assert "newest" in transcript
@@ -50,16 +50,64 @@ def test_format_transcript_omits_empty_messages():
     assert omitted == 0
 
 
-def test_format_transcript_uses_readable_block_quotes_and_reply_context():
-    transcript, _ = summarize_module.format_transcript(
-        [message(1, "A reply", message_id=11, reply_to=10)], 1000
+def test_format_transcript_uses_names_and_inline_reply_quotes():
+    original = message(0, "bar baz", author_id=2, message_id=10)
+    reply = message(1, "foo bar", author_id=1, message_id=11, reply_to=10)
+    transcript, _ = summarize_module.format_transcript([original, reply], 1000)
+
+    assert transcript == (
+        "User 2:\n"
+        "bar baz\n\n"
+        "User 1 in response to User 2:\n"
+        "> bar baz\n"
+        "foo bar"
     )
 
-    assert (
-        "> **User 1** · 2026-09-04 12:01 UTC · message 11 · replying to message 10"
-        in transcript
+
+@pytest.mark.asyncio
+async def test_fetch_history_falls_back_to_last_20_messages():
+    older = message(0, "Older")
+    newer = message(1, "Newer")
+    calls = []
+
+    async def history(**kwargs):
+        calls.append(kwargs)
+        items = [newer] if "after" in kwargs else [newer, older]
+        for item in items:
+            yield item
+
+    messages, used_fallback = await summarize_module.fetch_summary_history(
+        history, BASE_TIME + timedelta(minutes=2)
     )
-    assert "> A reply" in transcript
+
+    assert messages == [older, newer]
+    assert used_fallback is True
+    assert calls[0]["limit"] == 100
+    assert calls[0]["after"] == BASE_TIME + timedelta(minutes=2) - timedelta(hours=48)
+    assert calls[1] == {
+        "limit": 20,
+        "before": BASE_TIME + timedelta(minutes=2),
+        "oldest_first": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_keeps_48_hour_window_when_it_has_20_messages():
+    newest_first = [message(index, str(index)) for index in range(20, 0, -1)]
+    calls = []
+
+    async def history(**kwargs):
+        calls.append(kwargs)
+        for item in newest_first:
+            yield item
+
+    messages, used_fallback = await summarize_module.fetch_summary_history(
+        history, BASE_TIME + timedelta(minutes=21)
+    )
+
+    assert messages == list(reversed(newest_first))
+    assert used_fallback is False
+    assert len(calls) == 1
 
 
 def test_split_discord_message_respects_limit_and_preserves_text():
@@ -95,8 +143,7 @@ async def test_summarize_messages_uses_configured_luna_model(monkeypatch):
     assert "only the most recent coherent topic" in kwargs["instructions"]
     assert "only the most recent topic" in kwargs["input"]
     assert "# Transcript" in kwargs["input"]
-    assert "> **User 1** · 2026-09-04 12:00 UTC · message 0" in kwargs["input"]
-    assert "> Hello" in kwargs["input"]
+    assert "——\nUser 1:\nHello\n——" in kwargs["input"]
 
 
 class FakeInteraction(discord.Interaction):
@@ -108,29 +155,23 @@ async def test_command_posts_non_ephemeral_summary(monkeypatch):
     older = message(0, "Earlier topic")
     newer = message(1, "Latest topic", author_id=2)
 
-    async def history(**kwargs):
-        assert kwargs == {
-            "limit": 100,
-            "before": interaction.created_at,
-            "after": interaction.created_at - timedelta(hours=48),
-            "oldest_first": False,
-        }
-        for item in [newer, older]:
-            yield item
-
     interaction = FakeInteraction()
     interaction.created_at = BASE_TIME + timedelta(minutes=2)
+    history = Mock()
     interaction.channel = SimpleNamespace(id=123, history=history)
     interaction.response = SimpleNamespace(defer=AsyncMock())
     interaction.followup = SimpleNamespace(send=AsyncMock())
     monkeypatch.setattr(
         summarize_module, "summarize_messages", AsyncMock(return_value="Summary text")
     )
+    fetch = AsyncMock(return_value=([older, newer], True))
+    monkeypatch.setattr(summarize_module, "fetch_summary_history", fetch)
 
     cog = summarize_module.Summarize(SimpleNamespace())
     await cog.summarize(interaction)
 
     interaction.response.defer.assert_awaited_once_with(ephemeral=False)
+    fetch.assert_awaited_once_with(history, interaction.created_at)
     summarize_module.summarize_messages.assert_awaited_once_with([older, newer])
     sent_text = interaction.followup.send.await_args.args[0]
     assert "latest topic from 2 recent messages" in sent_text

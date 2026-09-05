@@ -25,6 +25,7 @@ def test_openai_book_lookup_settings(monkeypatch):
     assert s.openai_summarization_reasoning_effort == "low"
     assert s.openai_summarization_max_output_tokens == 3000
     assert s.summarization_history_limit == 100
+    assert s.summarization_min_messages == 20
     assert s.summarization_max_input_chars == 600_000
     assert s.summarization_lookback_hours == 48.0
 

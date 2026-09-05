@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     summarization_history_limit: int = Field(
         default=100, alias="SUMMARIZATION_HISTORY_LIMIT", ge=1, le=100
     )
+    summarization_min_messages: int = Field(
+        default=20, alias="SUMMARIZATION_MIN_MESSAGES", ge=1, le=20
+    )
     summarization_max_input_chars: int = Field(
         default=600_000, alias="SUMMARIZATION_MAX_INPUT_CHARS", ge=1000
     )

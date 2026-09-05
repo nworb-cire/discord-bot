@@ -11,7 +11,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 * `/vote`: Allocate weighted votes per election.
 * `/close_voting`: Close elections early and post results with discussion threads.
 * `/predict <date> <odds> <text>`: Schedule and remind predictions.
-* `/summarize`: Ask AI to identify and publicly summarize the latest topic from up to 100 channel messages in the last 48 hours.
+* `/summarize`: Ask AI to publicly summarize the latest topic from up to 100 channel messages in the last 48 hours, falling back to the channel's latest 20 messages.
 * `/help`: List available commands.
 
 ## Setting up a development environment
@@ -49,6 +49,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    OPENAI_SUMMARIZATION_REASONING_EFFORT=low
    OPENAI_SUMMARIZATION_MAX_OUTPUT_TOKENS=3000
    SUMMARIZATION_HISTORY_LIMIT=100
+   SUMMARIZATION_MIN_MESSAGES=20
    SUMMARIZATION_MAX_INPUT_CHARS=600000
    SUMMARIZATION_LOOKBACK_HOURS=48
    PREDICTIONS_CHANNEL_ID=1234567893
