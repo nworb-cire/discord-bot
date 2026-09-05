@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 
@@ -30,10 +30,15 @@ async def test_on_ready_syncs_commands(monkeypatch):
     monkeypatch.setattr(main, "setup_commands", AsyncMock())
     sync_mock = AsyncMock(return_value=[1])
     copy_global_to_mock = Mock()
+    clear_commands_mock = Mock()
     monkeypatch.setattr(
         main.bot,
         "tree",
-        SimpleNamespace(sync=sync_mock, copy_global_to=copy_global_to_mock),
+        SimpleNamespace(
+            sync=sync_mock,
+            copy_global_to=copy_global_to_mock,
+            clear_commands=clear_commands_mock,
+        ),
     )
     monkeypatch.setattr(
         main.discord,
@@ -48,7 +53,10 @@ async def test_on_ready_syncs_commands(monkeypatch):
     await main.on_ready()
 
     copy_global_to_mock.assert_called_once()
-    sync_mock.assert_awaited_once_with(guild=SimpleNamespace(id=123456789))
+    clear_commands_mock.assert_called_once_with(guild=None)
+    sync_mock.assert_has_awaits(
+        [call(), call(guild=SimpleNamespace(id=123456789))]
+    )
     assert getattr(main.election_auto_close, "started", False) is True
     assert getattr(main.prediction_reminder, "started", False) is True
     assert getattr(main.calendar_sync, "started", False) is True
@@ -59,10 +67,15 @@ async def test_on_ready_syncs_commands(monkeypatch):
 async def test_sync_commands_uses_global_sync_without_a_guild(monkeypatch):
     sync_mock = AsyncMock(return_value=[1])
     copy_global_to_mock = Mock()
+    clear_commands_mock = Mock()
     monkeypatch.setattr(
         main.bot,
         "tree",
-        SimpleNamespace(sync=sync_mock, copy_global_to=copy_global_to_mock),
+        SimpleNamespace(
+            sync=sync_mock,
+            copy_global_to=copy_global_to_mock,
+            clear_commands=clear_commands_mock,
+        ),
     )
     monkeypatch.setattr(main.settings, "discord_guild_id", None)
     monkeypatch.setattr(
@@ -73,6 +86,7 @@ async def test_sync_commands_uses_global_sync_without_a_guild(monkeypatch):
 
     sync_mock.assert_awaited_once_with()
     copy_global_to_mock.assert_not_called()
+    clear_commands_mock.assert_not_called()
 
 
 @pytest.mark.asyncio

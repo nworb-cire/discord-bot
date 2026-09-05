@@ -43,6 +43,8 @@ async def sync_commands() -> None:
 
     guild = discord.Object(id=settings.discord_guild_id)
     bot.tree.copy_global_to(guild=guild)
+    bot.tree.clear_commands(guild=None)
+    await bot.tree.sync()
     synced = await bot.tree.sync(guild=guild)
     logger.info(
         "Synced {} commands to Discord guild {}.", len(synced), settings.discord_guild_id
