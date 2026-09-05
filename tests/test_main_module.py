@@ -17,12 +17,13 @@ async def test_setup_commands_adds_cogs(monkeypatch):
     monkeypatch.setattr(main, "VotingSession", FakeCog)
     monkeypatch.setattr(main, "Ballot", FakeCog)
     monkeypatch.setattr(main, "Predict", FakeCog)
+    monkeypatch.setattr(main, "Summarize", FakeCog)
 
     main.bot.added_cogs.clear()
 
     await main.setup_commands()
 
-    assert len(main.bot.added_cogs) == 4
+    assert len(main.bot.added_cogs) == 5
 
 
 @pytest.mark.asyncio

@@ -39,6 +39,27 @@ class Settings(BaseSettings):
     openai_prediction_evidence_max_output_tokens: int = Field(
         default=2000, alias="OPENAI_PREDICTION_EVIDENCE_MAX_OUTPUT_TOKENS"
     )
+    openai_summarization_model: str = Field(
+        default="gpt-5.6-luna", alias="OPENAI_SUMMARIZATION_MODEL"
+    )
+    openai_summarization_reasoning_effort: str = Field(
+        default="low", alias="OPENAI_SUMMARIZATION_REASONING_EFFORT"
+    )
+    openai_summarization_max_output_tokens: int = Field(
+        default=3000, alias="OPENAI_SUMMARIZATION_MAX_OUTPUT_TOKENS"
+    )
+    summarization_history_limit: int = Field(
+        default=500, alias="SUMMARIZATION_HISTORY_LIMIT", ge=1, le=1000
+    )
+    summarization_max_input_chars: int = Field(
+        default=600_000, alias="SUMMARIZATION_MAX_INPUT_CHARS", ge=1000
+    )
+    summarization_hard_gap_hours: float = Field(
+        default=6.0, alias="SUMMARIZATION_HARD_GAP_HOURS", gt=0
+    )
+    summarization_soft_gap_minutes: float = Field(
+        default=90.0, alias="SUMMARIZATION_SOFT_GAP_MINUTES", gt=0
+    )
     google_service_account_email: str | None = Field(
         default=None, alias="GOOGLE_SERVICE_ACCOUNT_EMAIL"
     )

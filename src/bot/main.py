@@ -10,15 +10,18 @@ from bot.background import (
 )
 from bot.config import get_settings
 from bot.commands.predict import Predict
+from bot.commands.summarize import Summarize
 from bot.commands.vote import Ballot
 from bot.commands.nominate import Nominate
 from bot.commands.voting_session import VotingSession
 from bot.utils import MOUNTAIN, utcnow
 
 settings = get_settings()
+intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(
     command_prefix="",
-    intents=discord.Intents.default(),
+    intents=intents,
     help_command=None,
 )
 
@@ -28,6 +31,7 @@ async def setup_commands():
     await bot.add_cog(VotingSession(bot))
     await bot.add_cog(Ballot(bot))
     await bot.add_cog(Predict(bot))
+    await bot.add_cog(Summarize(bot))
 
 
 async def sync_commands() -> None:

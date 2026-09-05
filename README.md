@@ -11,6 +11,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 * `/vote`: Allocate weighted votes per election.
 * `/close_voting`: Close elections early and post results with discussion threads.
 * `/predict <date> <odds> <text>`: Schedule and remind predictions.
+* `/summarize`: Find the start of the current channel conversation and post a public AI summary.
 * `/help`: List available commands.
 
 ## Setting up a development environment
@@ -19,6 +20,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 
    * Docker & Docker Compose
    * Python 3.12 installed (for running tests locally)
+   * The Discord application's **Message Content Intent** enabled so `/summarize` can read channel history
 2. **Clone repository**
 
    ```bash
@@ -43,6 +45,13 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
    OPENAI_BOOK_LOOKUP_REASONING_EFFORT=low
    OPENAI_PREDICTION_EVIDENCE_MODEL=gpt-5.6-luna
    OPENAI_PREDICTION_EVIDENCE_REASONING_EFFORT=high
+   OPENAI_SUMMARIZATION_MODEL=gpt-5.6-luna
+   OPENAI_SUMMARIZATION_REASONING_EFFORT=low
+   OPENAI_SUMMARIZATION_MAX_OUTPUT_TOKENS=3000
+   SUMMARIZATION_HISTORY_LIMIT=500
+   SUMMARIZATION_MAX_INPUT_CHARS=600000
+   SUMMARIZATION_HARD_GAP_HOURS=6
+   SUMMARIZATION_SOFT_GAP_MINUTES=90
    PREDICTIONS_CHANNEL_ID=1234567893
    STAGING=false
    BOOK_MAX_ELECTION_APPEARANCES=3
