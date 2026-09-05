@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -29,18 +29,50 @@ async def test_setup_commands_adds_cogs(monkeypatch):
 async def test_on_ready_syncs_commands(monkeypatch):
     monkeypatch.setattr(main, "setup_commands", AsyncMock())
     sync_mock = AsyncMock(return_value=[1])
-    monkeypatch.setattr(main.bot, "tree", SimpleNamespace(sync=sync_mock))
+    copy_global_to_mock = Mock()
+    monkeypatch.setattr(
+        main.bot,
+        "tree",
+        SimpleNamespace(sync=sync_mock, copy_global_to=copy_global_to_mock),
+    )
+    monkeypatch.setattr(
+        main.discord,
+        "Object",
+        lambda *, id: SimpleNamespace(id=id),
+        raising=False,
+    )
     monkeypatch.setattr(
         main, "logger", SimpleNamespace(info=lambda *args, **kwargs: None)
     )
 
     await main.on_ready()
 
-    sync_mock.assert_awaited_once()
+    copy_global_to_mock.assert_called_once()
+    sync_mock.assert_awaited_once_with(guild=SimpleNamespace(id=123456789))
     assert getattr(main.election_auto_close, "started", False) is True
     assert getattr(main.prediction_reminder, "started", False) is True
     assert getattr(main.calendar_sync, "started", False) is True
     assert getattr(main.recurring_event_creation, "started", False) is True
+
+
+@pytest.mark.asyncio
+async def test_sync_commands_uses_global_sync_without_a_guild(monkeypatch):
+    sync_mock = AsyncMock(return_value=[1])
+    copy_global_to_mock = Mock()
+    monkeypatch.setattr(
+        main.bot,
+        "tree",
+        SimpleNamespace(sync=sync_mock, copy_global_to=copy_global_to_mock),
+    )
+    monkeypatch.setattr(main.settings, "discord_guild_id", None)
+    monkeypatch.setattr(
+        main, "logger", SimpleNamespace(info=lambda *args, **kwargs: None)
+    )
+
+    await main.sync_commands()
+
+    sync_mock.assert_awaited_once_with()
+    copy_global_to_mock.assert_not_called()
 
 
 @pytest.mark.asyncio

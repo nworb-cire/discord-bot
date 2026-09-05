@@ -30,11 +30,29 @@ async def setup_commands():
     await bot.add_cog(Predict(bot))
 
 
+async def sync_commands() -> None:
+    """Synchronize commands immediately in the configured Discord guild.
+
+    Guild commands update immediately, unlike globally registered commands, which
+    Discord may cache for an extended period.
+    """
+    if settings.discord_guild_id is None:
+        synced = await bot.tree.sync()
+        logger.info("Synced {} global commands to Discord.", len(synced))
+        return
+
+    guild = discord.Object(id=settings.discord_guild_id)
+    bot.tree.copy_global_to(guild=guild)
+    synced = await bot.tree.sync(guild=guild)
+    logger.info(
+        "Synced {} commands to Discord guild {}.", len(synced), settings.discord_guild_id
+    )
+
+
 @bot.event
 async def on_ready():
     await setup_commands()
-    synced = await bot.tree.sync()
-    logger.info(f"Synced {len(synced)} commands to Discord.")
+    await sync_commands()
     logger.info(f"Bot ready as {bot.user}.")
     election_auto_close.start()
     prediction_reminder.start()
