@@ -46,7 +46,7 @@ class Settings(BaseSettings):
         default="low", alias="OPENAI_SUMMARIZATION_REASONING_EFFORT"
     )
     openai_summarization_max_output_tokens: int = Field(
-        default=3000, alias="OPENAI_SUMMARIZATION_MAX_OUTPUT_TOKENS"
+        default=500, alias="OPENAI_SUMMARIZATION_MAX_OUTPUT_TOKENS"
     )
     summarization_history_limit: int = Field(
         default=100, alias="SUMMARIZATION_HISTORY_LIMIT", ge=1, le=100

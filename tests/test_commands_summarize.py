@@ -16,6 +16,7 @@ def message(
     content: str,
     *,
     author_id: int = 1,
+    nickname: str | None = None,
     message_id: int | None = None,
     reply_to: int | None = None,
 ):
@@ -24,7 +25,9 @@ def message(
         created_at=BASE_TIME + timedelta(minutes=minutes),
         content=content,
         clean_content=content,
-        author=SimpleNamespace(id=author_id, display_name=f"User {author_id}"),
+        author=SimpleNamespace(
+            id=author_id, display_name=f"User {author_id}", nick=nickname
+        ),
         reference=(
             SimpleNamespace(message_id=reply_to) if reply_to is not None else None
         ),
@@ -62,6 +65,15 @@ def test_format_transcript_uses_names_and_inline_reply_quotes():
         "> bar baz\n"
         "foo bar"
     )
+
+
+def test_format_transcript_prefers_server_nicknames():
+    original = message(0, "Hi", author_id=2, nickname="Bookworm")
+    reply = message(1, "Hello", author_id=1, nickname="Reader")
+
+    transcript, _ = summarize_module.format_transcript([original, reply], 1000)
+
+    assert transcript == "Bookworm:\nHi\n\nReader:\nHello"
 
 
 @pytest.mark.asyncio
@@ -138,9 +150,11 @@ async def test_summarize_messages_uses_configured_luna_model(monkeypatch):
     kwargs = create.await_args.kwargs
     assert kwargs["model"] == "gpt-5.6-luna"
     assert kwargs["reasoning"] == {"effort": "low"}
+    assert kwargs["text"] == {"verbosity": "low"}
     assert kwargs["store"] is False
     assert "untrusted data" in kwargs["instructions"]
     assert "only the most recent coherent topic" in kwargs["instructions"]
+    assert "180 words or fewer" in kwargs["instructions"]
     assert "only the most recent topic" in kwargs["input"]
     assert "# Transcript" in kwargs["input"]
     assert "——\nUser 1:\nHello\n——" in kwargs["input"]

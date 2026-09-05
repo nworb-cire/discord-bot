@@ -27,8 +27,9 @@ topic they refer to. Exclude earlier topics even when they are important. If the
 latest messages do not form a substantial topic by themselves, include the most
 recent substantive exchange they refer to.
 
-Start with a compact overview, then use short Markdown bullets for the important
-facts, arguments, conclusions, and useful context. When present, clearly identify:
+Keep the entire summary to 180 words or fewer. Start with a one-sentence overview,
+then use at most five short Markdown bullets for the important facts, arguments,
+conclusions, and useful context. When present, clearly identify:
 - decisions or recommendations and their stated reasons;
 - action items, including the owner and deadline only when explicitly stated;
 - unresolved questions, disagreements, risks, or blockers.
@@ -47,8 +48,18 @@ class SummarizationError(Exception):
 
 def _author_name(message: Any) -> str:
     author = getattr(message, "author", None)
+    guild = getattr(message, "guild", None)
+    get_member = getattr(guild, "get_member", None)
+    member = (
+        get_member(getattr(author, "id", None))
+        if callable(get_member) and author is not None
+        else None
+    )
     return str(
-        getattr(author, "display_name", None)
+        getattr(member, "nick", None)
+        or getattr(author, "nick", None)
+        or getattr(member, "display_name", None)
+        or getattr(author, "display_name", None)
         or getattr(author, "name", None)
         or "Unknown user"
     )
@@ -150,6 +161,7 @@ async def summarize_messages(messages: Sequence[Any]) -> str:
         response = await client.responses.create(
             model=settings.openai_summarization_model,
             reasoning={"effort": settings.openai_summarization_reasoning_effort},
+            text={"verbosity": "low"},
             instructions=SUMMARY_INSTRUCTIONS,
             input=(
                 f"# Task\n{omission_note}Identify and summarize only the most "
