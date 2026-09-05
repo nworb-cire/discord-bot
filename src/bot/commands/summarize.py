@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-import json
 from typing import Any, Sequence
 
 import discord
@@ -80,43 +79,56 @@ def _embed_text(message: Any) -> list[str]:
     return values
 
 
-def serialize_transcript(messages: Sequence[Any], max_chars: int) -> tuple[str, int]:
-    """Serialize newest messages that fit, returning JSON and omitted count."""
-    records = [
-        {
-            "message_id": str(getattr(message, "id", "")),
-            "reply_to_message_id": str(
-                getattr(getattr(message, "reference", None), "message_id", "") or ""
-            ),
-            "timestamp": _message_time(message).isoformat(),
-            "author": _author_name(message),
-            "content": str(
-                getattr(message, "clean_content", None) or message.content or ""
-            ),
-            "attachments": _attachment_names(message),
-            "embeds": _embed_text(message),
-        }
-        for message in messages
+def _quote_block(lines: Sequence[str]) -> str:
+    quoted: list[str] = []
+    for value in lines:
+        value_lines = value.splitlines() or [""]
+        quoted.extend(f"> {line}" if line else ">" for line in value_lines)
+    return "\n".join(quoted)
+
+
+def _format_message(message: Any) -> str | None:
+    content = str(getattr(message, "clean_content", None) or message.content or "")
+    attachments = _attachment_names(message)
+    embeds = _embed_text(message)
+    if not content and not attachments and not embeds:
+        return None
+
+    created_at = _message_time(message).strftime("%Y-%m-%d %H:%M UTC")
+    metadata = [
+        f"**{_author_name(message)}**",
+        created_at,
+        f"message {getattr(message, 'id', 'unknown')}",
     ]
-    records = [
-        record
-        for record in records
-        if record["content"] or record["attachments"] or record["embeds"]
-    ]
+    reply_to = getattr(getattr(message, "reference", None), "message_id", None)
+    if reply_to is not None:
+        metadata.append(f"replying to message {reply_to}")
+
+    lines = [" · ".join(metadata)]
+    if content:
+        lines.append(content)
+    lines.extend(f"Attachment: {name}" for name in attachments)
+    lines.extend(f"Embed: {text}" for text in embeds)
+    return _quote_block(lines)
+
+
+def format_transcript(messages: Sequence[Any], max_chars: int) -> tuple[str, int]:
+    """Format newest messages that fit, returning Markdown and omitted count."""
+    blocks = [block for message in messages if (block := _format_message(message))]
     omitted = 0
-    transcript = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
-    while records and len(transcript) > max_chars:
-        records.pop(0)
+    transcript = "\n\n".join(blocks)
+    while blocks and len(transcript) > max_chars:
+        blocks.pop(0)
         omitted += 1
-        transcript = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
+        transcript = "\n\n".join(blocks)
     return transcript, omitted
 
 
 async def summarize_messages(messages: Sequence[Any]) -> str:
-    transcript, omitted = serialize_transcript(
+    transcript, omitted = format_transcript(
         messages, settings.summarization_max_input_chars
     )
-    if not transcript or transcript == "[]":
+    if not transcript:
         raise SummarizationError("There is no readable conversation to summarize.")
 
     omission_note = (
@@ -132,9 +144,9 @@ async def summarize_messages(messages: Sequence[Any]) -> str:
             reasoning={"effort": settings.openai_summarization_reasoning_effort},
             instructions=SUMMARY_INSTRUCTIONS,
             input=(
-                f"{omission_note}Identify and summarize only the most recent topic "
-                "in this chronological JSON transcript.\n"
-                f"<transcript>\n{transcript}\n</transcript>"
+                f"# Task\n{omission_note}Identify and summarize only the most "
+                "recent topic in the chronological transcript below.\n\n"
+                f"# Transcript\n{transcript}"
             ),
             max_output_tokens=settings.openai_summarization_max_output_tokens,
             store=False,

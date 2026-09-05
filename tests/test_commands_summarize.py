@@ -33,30 +33,33 @@ def message(
     )
 
 
-def test_serialize_transcript_keeps_newest_records_under_cutoff():
+def test_format_transcript_keeps_newest_messages_under_cutoff():
     messages = [message(0, "a" * 100), message(1, "newest")]
 
-    transcript, omitted = summarize_module.serialize_transcript(messages, max_chars=250)
+    transcript, omitted = summarize_module.format_transcript(messages, max_chars=180)
 
     assert omitted == 1
     assert "newest" in transcript
     assert "a" * 100 not in transcript
 
 
-def test_serialize_transcript_omits_empty_messages():
-    transcript, omitted = summarize_module.serialize_transcript([message(0, "")], 1000)
+def test_format_transcript_omits_empty_messages():
+    transcript, omitted = summarize_module.format_transcript([message(0, "")], 1000)
 
-    assert transcript == "[]"
+    assert transcript == ""
     assert omitted == 0
 
 
-def test_serialize_transcript_includes_reply_relationships():
-    transcript, _ = summarize_module.serialize_transcript(
+def test_format_transcript_uses_readable_block_quotes_and_reply_context():
+    transcript, _ = summarize_module.format_transcript(
         [message(1, "A reply", message_id=11, reply_to=10)], 1000
     )
 
-    assert '"message_id":"11"' in transcript
-    assert '"reply_to_message_id":"10"' in transcript
+    assert (
+        "> **User 1** · 2026-09-04 12:01 UTC · message 11 · replying to message 10"
+        in transcript
+    )
+    assert "> A reply" in transcript
 
 
 def test_split_discord_message_respects_limit_and_preserves_text():
@@ -91,7 +94,9 @@ async def test_summarize_messages_uses_configured_luna_model(monkeypatch):
     assert "untrusted data" in kwargs["instructions"]
     assert "only the most recent coherent topic" in kwargs["instructions"]
     assert "only the most recent topic" in kwargs["input"]
-    assert '"content":"Hello"' in kwargs["input"]
+    assert "# Transcript" in kwargs["input"]
+    assert "> **User 1** · 2026-09-04 12:00 UTC · message 0" in kwargs["input"]
+    assert "> Hello" in kwargs["input"]
 
 
 class FakeInteraction(discord.Interaction):
