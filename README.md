@@ -11,7 +11,7 @@ This repository contains **Book Club Bot**, a Discord bot for managing book nomi
 * `/vote`: Allocate weighted votes per election.
 * `/close_voting`: Close elections early and post results with discussion threads.
 * `/predict <date> <odds> <text>`: Schedule and remind predictions.
-* `/summarize` (also `/ross_tldr_bot`): Summarize the latest topic from up to 100 channel messages in the last 48 hours, falling back to the channel's latest 20 messages.
+* `/summarize` (also `/ross_tldr_bot`): Privately summarize the latest topic from up to 100 channel messages in the last 48 hours, falling back to the channel's latest 20 messages. Use the optional `public` setting to post it in the channel.
 * `/help`: List available commands.
 
 ## Setting up a development environment

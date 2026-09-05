@@ -309,20 +309,28 @@ class Summarize(commands.Cog):
         name="summarize",
         description="Summarize the current conversation in this channel.",
     )
+    @app_commands.describe(public="Post the summary publicly instead of privately.")
     @handle_interaction_errors()
-    async def summarize(self, interaction: discord.Interaction) -> None:
-        await self._summarize(interaction)
+    async def summarize(
+        self, interaction: discord.Interaction, public: bool = False
+    ) -> None:
+        await self._summarize(interaction, public=public)
 
     @app_commands.command(
         name="ross_tldr_bot",
         description="Alias for /summarize.",
     )
+    @app_commands.describe(public="Post the summary publicly instead of privately.")
     @handle_interaction_errors()
-    async def ross_tldr_bot(self, interaction: discord.Interaction) -> None:
-        await self._summarize(interaction)
+    async def ross_tldr_bot(
+        self, interaction: discord.Interaction, public: bool = False
+    ) -> None:
+        await self._summarize(interaction, public=public)
 
-    async def _summarize(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+    async def _summarize(
+        self, interaction: discord.Interaction, *, public: bool = False
+    ) -> None:
+        await interaction.response.defer(ephemeral=not public)
         channel = interaction.channel
         history = getattr(channel, "history", None)
         if channel is None or not callable(history):
@@ -358,7 +366,7 @@ class Summarize(commands.Cog):
             raise UserFacingError(str(exc)) from exc
 
         allowed_mentions_cls = getattr(discord, "AllowedMentions", None)
-        send_kwargs = {"ephemeral": True}
+        send_kwargs = {"ephemeral": not public}
         if allowed_mentions_cls is not None:
             send_kwargs["allowed_mentions"] = allowed_mentions_cls.none()
         for chunk in split_discord_message(summary):

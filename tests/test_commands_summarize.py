@@ -208,3 +208,27 @@ async def test_command_posts_ephemeral_headerless_summary(monkeypatch):
     sent_text = interaction.followup.send.await_args.args[0]
     assert sent_text == "Summary text"
     assert interaction.followup.send.await_args.kwargs["ephemeral"] is True
+
+
+@pytest.mark.asyncio
+async def test_command_can_post_public_summary(monkeypatch):
+    interaction = FakeInteraction()
+    interaction.created_at = BASE_TIME + timedelta(minutes=2)
+    history = Mock()
+    interaction.channel = SimpleNamespace(id=123, history=history)
+    interaction.response = SimpleNamespace(defer=AsyncMock())
+    interaction.followup = SimpleNamespace(send=AsyncMock())
+    monkeypatch.setattr(
+        summarize_module, "summarize_messages", AsyncMock(return_value="Summary text")
+    )
+    monkeypatch.setattr(
+        summarize_module,
+        "fetch_summary_history",
+        AsyncMock(return_value=([message(0, "Topic")], False)),
+    )
+
+    cog = summarize_module.Summarize(SimpleNamespace())
+    await cog.summarize(interaction, public=True)
+
+    interaction.response.defer.assert_awaited_once_with(ephemeral=False)
+    assert interaction.followup.send.await_args.kwargs["ephemeral"] is False
