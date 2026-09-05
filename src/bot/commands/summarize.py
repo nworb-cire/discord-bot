@@ -322,7 +322,7 @@ class Summarize(commands.Cog):
         await self._summarize(interaction)
 
     async def _summarize(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         history = getattr(channel, "history", None)
         if channel is None or not callable(history):
@@ -358,7 +358,7 @@ class Summarize(commands.Cog):
             raise UserFacingError(str(exc)) from exc
 
         allowed_mentions_cls = getattr(discord, "AllowedMentions", None)
-        send_kwargs = {}
+        send_kwargs = {"ephemeral": True}
         if allowed_mentions_cls is not None:
             send_kwargs["allowed_mentions"] = allowed_mentions_cls.none()
         for chunk in split_discord_message(summary):
