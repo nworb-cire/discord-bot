@@ -311,7 +311,18 @@ class Summarize(commands.Cog):
     )
     @handle_interaction_errors()
     async def summarize(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await self._summarize(interaction)
+
+    @app_commands.command(
+        name="ross_tldr_bot",
+        description="Alias for /summarize.",
+    )
+    @handle_interaction_errors()
+    async def ross_tldr_bot(self, interaction: discord.Interaction) -> None:
+        await self._summarize(interaction)
+
+    async def _summarize(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
         channel = interaction.channel
         history = getattr(channel, "history", None)
         if channel is None or not callable(history):
@@ -346,14 +357,9 @@ class Summarize(commands.Cog):
         except SummarizationError as exc:
             raise UserFacingError(str(exc)) from exc
 
-        message_label = "message" if len(messages) == 1 else "messages"
-        payload = (
-            f"**Conversation summary** — latest topic from {len(messages)} recent "
-            f"{message_label}\n\n{summary}"
-        )
         allowed_mentions_cls = getattr(discord, "AllowedMentions", None)
-        send_kwargs = {"ephemeral": True}
+        send_kwargs = {}
         if allowed_mentions_cls is not None:
             send_kwargs["allowed_mentions"] = allowed_mentions_cls.none()
-        for chunk in split_discord_message(payload):
+        for chunk in split_discord_message(summary):
             await interaction.followup.send(chunk, **send_kwargs)

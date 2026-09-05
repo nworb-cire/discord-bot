@@ -183,7 +183,7 @@ class FakeInteraction(discord.Interaction):
 
 
 @pytest.mark.asyncio
-async def test_command_posts_ephemeral_summary(monkeypatch):
+async def test_command_posts_public_headerless_summary(monkeypatch):
     older = message(0, "Earlier topic")
     newer = message(1, "Latest topic", author_id=2)
 
@@ -202,10 +202,9 @@ async def test_command_posts_ephemeral_summary(monkeypatch):
     cog = summarize_module.Summarize(SimpleNamespace())
     await cog.summarize(interaction)
 
-    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    interaction.response.defer.assert_awaited_once_with()
     fetch.assert_awaited_once_with(history, interaction.created_at)
     summarize_module.summarize_messages.assert_awaited_once_with([older, newer])
     sent_text = interaction.followup.send.await_args.args[0]
-    assert "latest topic from 2 recent messages" in sent_text
-    assert "Summary text" in sent_text
-    assert interaction.followup.send.await_args.kwargs["ephemeral"] is True
+    assert sent_text == "Summary text"
+    assert "ephemeral" not in interaction.followup.send.await_args.kwargs
