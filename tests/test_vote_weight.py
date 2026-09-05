@@ -24,10 +24,9 @@ def test_openai_book_lookup_settings(monkeypatch):
     assert s.openai_summarization_model == "gpt-5.6-luna"
     assert s.openai_summarization_reasoning_effort == "low"
     assert s.openai_summarization_max_output_tokens == 3000
-    assert s.summarization_history_limit == 500
+    assert s.summarization_history_limit == 100
     assert s.summarization_max_input_chars == 600_000
-    assert s.summarization_hard_gap_hours == 6.0
-    assert s.summarization_soft_gap_minutes == 90.0
+    assert s.summarization_lookback_hours == 48.0
 
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_MODEL", "custom-model")
     monkeypatch.setenv("OPENAI_BOOK_LOOKUP_REASONING_EFFORT", "medium")

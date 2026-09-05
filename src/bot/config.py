@@ -49,16 +49,13 @@ class Settings(BaseSettings):
         default=3000, alias="OPENAI_SUMMARIZATION_MAX_OUTPUT_TOKENS"
     )
     summarization_history_limit: int = Field(
-        default=500, alias="SUMMARIZATION_HISTORY_LIMIT", ge=1, le=1000
+        default=100, alias="SUMMARIZATION_HISTORY_LIMIT", ge=1, le=100
     )
     summarization_max_input_chars: int = Field(
         default=600_000, alias="SUMMARIZATION_MAX_INPUT_CHARS", ge=1000
     )
-    summarization_hard_gap_hours: float = Field(
-        default=6.0, alias="SUMMARIZATION_HARD_GAP_HOURS", gt=0
-    )
-    summarization_soft_gap_minutes: float = Field(
-        default=90.0, alias="SUMMARIZATION_SOFT_GAP_MINUTES", gt=0
+    summarization_lookback_hours: float = Field(
+        default=48.0, alias="SUMMARIZATION_LOOKBACK_HOURS", gt=0, le=48
     )
     google_service_account_email: str | None = Field(
         default=None, alias="GOOGLE_SERVICE_ACCOUNT_EMAIL"
