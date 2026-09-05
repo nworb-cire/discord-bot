@@ -77,6 +77,24 @@ def test_format_transcript_prefers_server_nicknames():
 
 
 @pytest.mark.asyncio
+async def test_resolve_author_names_fetches_uncached_server_member():
+    fetched_member = SimpleNamespace(nick="Bookworm", display_name="Bookworm")
+    guild = SimpleNamespace(
+        id=123,
+        get_member=Mock(return_value=None),
+        fetch_member=AsyncMock(return_value=fetched_member),
+    )
+    uncached = message(0, "Hi", author_id=2)
+    uncached.author = SimpleNamespace(id=2, display_name="User 2")
+    uncached.guild = guild
+
+    names = await summarize_module.resolve_author_names([uncached])
+
+    assert names == {2: "Bookworm"}
+    guild.fetch_member.assert_awaited_once_with(2)
+
+
+@pytest.mark.asyncio
 async def test_fetch_history_falls_back_to_last_20_messages():
     older = message(0, "Older")
     newer = message(1, "Newer")

@@ -46,8 +46,11 @@ class SummarizationError(Exception):
     pass
 
 
-def _author_name(message: Any) -> str:
+def _author_name(message: Any, author_names: dict[Any, str] | None = None) -> str:
     author = getattr(message, "author", None)
+    author_id = getattr(author, "id", None)
+    if author_names and author_id in author_names:
+        return author_names[author_id]
     guild = getattr(message, "guild", None)
     get_member = getattr(guild, "get_member", None)
     member = (
@@ -99,18 +102,24 @@ def _referenced_message(message: Any, messages_by_id: dict[Any, Any]) -> Any | N
     return messages_by_id.get(getattr(reference, "message_id", None))
 
 
-def _format_message(message: Any, messages_by_id: dict[Any, Any]) -> str | None:
+def _format_message(
+    message: Any,
+    messages_by_id: dict[Any, Any],
+    author_names: dict[Any, str] | None = None,
+) -> str | None:
     content = str(getattr(message, "clean_content", None) or message.content or "")
     attachments = _attachment_names(message)
     embeds = _embed_text(message)
     if not content and not attachments and not embeds:
         return None
 
-    author = _author_name(message)
+    author = _author_name(message, author_names)
     referenced = _referenced_message(message, messages_by_id)
     reply_id = getattr(getattr(message, "reference", None), "message_id", None)
     if referenced is not None:
-        lines = [f"{author} in response to {_author_name(referenced)}:"]
+        lines = [
+            f"{author} in response to {_author_name(referenced, author_names)}:"
+        ]
         referenced_content = _message_content(referenced)
         if referenced_content:
             lines.append(_quote_text(referenced_content))
@@ -126,13 +135,17 @@ def _format_message(message: Any, messages_by_id: dict[Any, Any]) -> str | None:
     return "\n".join(lines)
 
 
-def format_transcript(messages: Sequence[Any], max_chars: int) -> tuple[str, int]:
+def format_transcript(
+    messages: Sequence[Any],
+    max_chars: int,
+    author_names: dict[Any, str] | None = None,
+) -> tuple[str, int]:
     """Format newest messages that fit, returning Markdown and omitted count."""
     messages_by_id = {getattr(message, "id", None): message for message in messages}
     blocks = [
         block
         for message in messages
-        if (block := _format_message(message, messages_by_id))
+        if (block := _format_message(message, messages_by_id, author_names))
     ]
     omitted = 0
     transcript = "\n\n".join(blocks)
@@ -143,9 +156,52 @@ def format_transcript(messages: Sequence[Any], max_chars: int) -> tuple[str, int
     return transcript, omitted
 
 
+async def resolve_author_names(messages: Sequence[Any]) -> dict[Any, str]:
+    """Resolve uncached guild authors to their current server display names."""
+    names: dict[Any, str] = {}
+    seen: set[tuple[Any, Any]] = set()
+
+    for message in messages:
+        author = getattr(message, "author", None)
+        author_id = getattr(author, "id", None)
+        guild = getattr(message, "guild", None)
+        if author_id is None or guild is None:
+            continue
+
+        key = (getattr(guild, "id", id(guild)), author_id)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        get_member = getattr(guild, "get_member", None)
+        member = get_member(author_id) if callable(get_member) else None
+        if member is None and not hasattr(author, "nick"):
+            fetch_member = getattr(guild, "fetch_member", None)
+            if callable(fetch_member):
+                try:
+                    member = await fetch_member(author_id)
+                except discord.HTTPException:
+                    logger.debug(
+                        "Could not resolve server nickname guild_id={} user_id={}",
+                        getattr(guild, "id", None),
+                        author_id,
+                    )
+
+        names[author_id] = str(
+            getattr(member, "nick", None)
+            or getattr(member, "display_name", None)
+            or getattr(author, "nick", None)
+            or getattr(author, "display_name", None)
+            or getattr(author, "name", None)
+            or "Unknown user"
+        )
+    return names
+
+
 async def summarize_messages(messages: Sequence[Any]) -> str:
+    author_names = await resolve_author_names(messages)
     transcript, omitted = format_transcript(
-        messages, settings.summarization_max_input_chars
+        messages, settings.summarization_max_input_chars, author_names
     )
     if not transcript:
         raise SummarizationError("There is no readable conversation to summarize.")
