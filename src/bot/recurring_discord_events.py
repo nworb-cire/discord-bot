@@ -42,8 +42,12 @@ class MonthlyRecurrenceRule:
                 f"Could not resolve weekday={self.byweekday} for {year}-{month:02d}."
             )
 
-        index = self.bysetpos - 1
-        if index < 0 or index >= len(weekday_dates):
+        index = self.bysetpos - 1 if self.bysetpos > 0 else self.bysetpos
+        if (
+            self.bysetpos == 0
+            or index < -len(weekday_dates)
+            or index >= len(weekday_dates)
+        ):
             raise RecurringEventError(
                 f"BYSETPOS={self.bysetpos} is out of range for {year}-{month:02d}."
             )
@@ -342,6 +346,22 @@ BOOK_CLUB_SERIES = MonthlyEventSeries(
     title_factory=lambda _month_start: "Book Club",
     location_factory=lambda _month_start: "TBD",
     name_matcher_factory=lambda _month_start: re.compile(r"(?i)^book\s*club(?:\b|:)"),
+)
+
+MOVIE_CLUB_SERIES = MonthlyEventSeries(
+    series_id="movie_club",
+    recurrence=MonthlyRecurrenceRule(
+        byweekday=calendar.SATURDAY,
+        bysetpos=-1,
+        at_time=time(hour=18, minute=30),
+    ),
+    duration=timedelta(hours=2),
+    include_month=lambda _month: True,
+    title_factory=lambda _month_start: "Movie Club",
+    location_factory=lambda _month_start: "TBD",
+    name_matcher_factory=lambda _month_start: re.compile(
+        r"(?i)^movie\s*club(?:\b|:)"
+    ),
 )
 
 

@@ -60,6 +60,32 @@ def test_monthly_recurrence_rule_second_weekday_occurrence():
     assert result.day == 14
 
 
+def test_monthly_recurrence_rule_last_weekday_occurrence():
+    rule = MonthlyRecurrenceRule(byweekday=5, bysetpos=-1, at_time=datetime.min.time())
+    result = rule.occurrence(2026, 2, timezone.utc)
+
+    assert result.year == 2026
+    assert result.month == 2
+    assert result.day == 28
+
+
+def test_build_creation_plan_adds_movie_club_on_last_saturday():
+    creator = RecurringDiscordEventCreator(_settings())
+    month_starts = [datetime(2026, 2, 1, tzinfo=timezone.utc).date()]
+
+    plan = creator._build_creation_plan(month_starts, [])
+
+    movie_club_events = [
+        event for event in plan.to_create if event.name == "Movie Club"
+    ]
+    assert len(movie_club_events) == 1
+    event = movie_club_events[0]
+    assert event.start_at.day == 28
+    assert event.start_at.hour == 18
+    assert event.start_at.minute == 30
+    assert event.location == "TBD"
+
+
 def test_build_creation_plan_respects_existing_regex_match():
     creator = RecurringDiscordEventCreator(_settings())
     month_starts = [datetime(2026, 1, 1, tzinfo=timezone.utc).date()]
@@ -72,7 +98,7 @@ def test_build_creation_plan_respects_existing_regex_match():
     ]
 
     plan = creator._build_creation_plan(month_starts, existing)
-    assert len(plan.to_create) == 0
+    assert all(event.name != "Book Club" for event in plan.to_create)
 
 
 def test_build_creation_plan_adds_meetup_with_correct_location():
@@ -81,8 +107,11 @@ def test_build_creation_plan_adds_meetup_with_correct_location():
 
     plan = creator._build_creation_plan(month_starts, [])
 
-    assert len(plan.to_create) == 1
-    event = plan.to_create[0]
+    meetup_events = [
+        event for event in plan.to_create if event.name == "April Meetup"
+    ]
+    assert len(meetup_events) == 1
+    event = meetup_events[0]
     assert event.name == "April Meetup"
     assert event.location == "Liberty Park"
 
@@ -123,7 +152,7 @@ def test_run_apply_posts_new_events(monkeypatch):
     url = "https://discord.com/api/v10/guilds/99/scheduled-events"
     routes = {
         ("GET", url, frozenset({("with_user_count", "false")})): [_Resp([])],
-        ("POST", url): [_Resp({"id": "new"})],
+        ("POST", url): [_Resp({"id": "new"}), _Resp({"id": "new-2"})],
     }
     monkeypatch.setattr(
         "bot.recurring_discord_events.httpx.Client", lambda timeout: _Client(routes)
@@ -131,9 +160,11 @@ def test_run_apply_posts_new_events(monkeypatch):
 
     summary = creator.run()
     assert summary["mode"] == "apply"
-    assert summary["to_create"] == 1
-    assert len(routes["posted"]) == 1
-    assert routes["posted"][0]["name"] == "February Meetup"
+    assert summary["to_create"] == 2
+    assert {event["name"] for event in routes["posted"]} == {
+        "February Meetup",
+        "Movie Club",
+    }
 
 
 def test_may_event_uses_dst_offset_when_planned_in_february():
@@ -141,8 +172,11 @@ def test_may_event_uses_dst_offset_when_planned_in_february():
     may = datetime(2026, 5, 1, tzinfo=timezone.utc).date()
     plan = creator._build_creation_plan([may], [])
 
-    assert len(plan.to_create) == 1
-    event = plan.to_create[0]
+    book_club_events = [
+        event for event in plan.to_create if event.name == "Book Club"
+    ]
+    assert len(book_club_events) == 1
+    event = book_club_events[0]
     assert event.name == "Book Club"
     assert event.start_at.utcoffset() == timezone(timedelta(hours=-6)).utcoffset(None)
     assert creator._datetime_to_rfc3339(event.start_at) == "2026-05-13T01:00:00Z"
